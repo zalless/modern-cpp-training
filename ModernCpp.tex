@@ -204,6 +204,8 @@
 \setbeamerfont{block body alerted}{size=\tiny}
 \setbeamercolor{block body alerted}{bg=red!30,fg=black}
 
+\graphicspath{ {pics/} }
+
 \title{Modern C++}
 \author{Jakub Zalewski}
 \institute{Adva Optical Networking}
@@ -967,8 +969,8 @@
 			{
 				Bar* mBar;
 			public:
-				MyClass() : mBar(new Bar) {}
-				~MyClass() { delete mBar;}
+				Foo() : mBar(new Bar) {}
+				~Foo() { delete mBar;}
 			};
 		\end{lstlisting}
 	\end{example}
@@ -980,8 +982,8 @@
 			{
 				std::unique_ptr<Bar> mBar;
 			public:
-				MyClass() : mBar(new Bar) {}
-				~MyClass() = default;
+				Foo() : mBar(new Bar) {}
+				~Foo() = default;
 			};
 		\end{lstlisting}
 	\end{example}
@@ -1000,8 +1002,8 @@
 			{
 				Bar* mBar;
 			public:
-				MyClass(Bar* bar) : mBar(bar) {}
-				~MyClass() { delete mBar;}
+				Foo(Bar* bar) : mBar(bar) {}
+				~Foo() { delete mBar;}
 			};
 		\end{lstlisting}
 	\end{example}
@@ -1013,8 +1015,8 @@
 			{
 				std::unique_ptr<Bar> mBar;
 			public:
-				MyClass(std::unique_ptr<Bar> bar) : mBar(std::move(bar)) {}
-				~MyClass() = default;
+				Foo(std::unique_ptr<Bar> bar) : mBar(std::move(bar)) {}
+				~Foo() = default;
 			};
 		\end{lstlisting}
 	\end{example}
@@ -4903,7 +4905,7 @@
     \begin{onlyenv}<2->
     \begin{lstlisting}
         AsyncDispatch dispatch;
-        std::packaged_task<int(const std::vector<int>&)> task;
+        std::packaged_task<int(const std::vector<int>&)> task{sum};
         auto future_sum = task.get_future();
         std::vector<int> vec = {1, 2, 3, 4};
         dispatch.push(std::move(task), std::cref{vec});
@@ -5435,6 +5437,9 @@
 	        }
 	    }
 	\end{lstlisting}
+	\begin{lstlisting}
+		// What's in v3?
+	\end{lstlisting}
 	\end{onlyenv}
 	
 	\begin{onlyenv}<2>
@@ -5443,9 +5448,6 @@
                         std::back_inserter(v3));
 	\end{lstlisting}
 	\end{onlyenv}
-	\begin{lstlisting}
-		// What's in v3?
-	\end{lstlisting}
 \end{frame}
 
 \begin{frame}[fragile]
@@ -5463,6 +5465,54 @@
 				1& 2& 3& 8& 11& 13\\};
 		%\draw[->](v2) -- (v3);
 		\draw[decorate,decoration={brace,mirror,amplitude=30pt}]([xshift=-4mm]v1-1-1.south) -- ([xshift=4mm]v2-1-4.south);
+	\end{tikzpicture}
+\end{frame}
+
+\begin{frame}[fragile,t]
+\frametitle {What if vector is not sorted?}
+	\begin{lstlisting}
+		std::vector<int> v1 = {3, 2, 1, 18, 14, 8, 13, 5};
+		std::vector<int> v2 = {5, 7, 14, 18};
+		std::vector<int> v3;
+	\end{lstlisting}
+	
+	\begin{onlyenv}<2>
+	\begin{lstlisting}
+        v3 = v1;
+        auto it = std::remove_if(v3.begin(), v3.end(), [&v2](int x)
+                {
+                    return std::find(v2.begin(), v2.end(), x) != v2.end();
+                });
+	\end{lstlisting}
+	\end{onlyenv}
+    \begin{onlyenv}<3>
+	\begin{lstlisting}
+        auto v3 = v1;
+        auto it = std::remove_if(v3.begin(), v3.end(), [&v2](int x)
+                {
+                    return std::find(v2.begin(), v2.end(), x) != v2.end();
+                });
+        v3.erase(it, v3.end());
+	\end{lstlisting}
+	\end{onlyenv}
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{\texttt{std::remove\_if}}
+	\begin{tikzpicture}[font=\ttfamily,
+		vector/.style={matrix of nodes,nodes={draw, minimum size=7mm, fill=green!30},
+		column sep=-\pgflinewidth, row sep=0.0mm, nodes in empty cells}]
+		\tikzset{row 1/.style={nodes={fill=green!30}}}
+
+		\matrix[vector] (v1){
+				3& 2& 1& 18& 14& 8& 13& 5\\};
+		
+		\matrix[vector, right=of v1] (v2){
+				5& 7& 14& 18\\};
+		\matrix[vector, below=of v2, xshift=-3.5cm] (v3){
+				3& 2& 1& 8& 11& 13& 18& 14& 5\\};
+		\draw[decorate,decoration={brace,mirror,amplitude=30pt}]([xshift=-4mm]v1-1-1.south) -- ([xshift=4mm]v2-1-4.south);
+		\draw ([xshift=-3.5mm]v3-1-7.south)--++(90:-3mm) node [below] {it1};
 	\end{tikzpicture}
 \end{frame}
 
@@ -5921,7 +5971,7 @@
 		minMaxSalaryPerPosition(const EmployeesDb& db, Profession profession)
 		{
 		    auto r = range(db, profession);
-		    minMax std::minmax_element(r.first, r.second,
+		    auto minMax = std::minmax_element(r.first, r.second,
 		                               [](const EmployeeRecord& e1, const EmployeeRecord& e2) {
 		                                   return e1.salary < e2.salary;
 		                               });
