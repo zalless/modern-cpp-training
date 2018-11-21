@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>{{title}}</title>
+  {{{style}}}
+  <script src="remark.min.js"></script>  
+  <script>
+    function create() {
+      var slideshow = remark.create({
+        {{{source}}},
+        ratio: '16:9',
+        highlightLines: true,
+        countIncrementalSlides: false,
+        highlightStyle: 'monokai',
+        highlightLanguage: 'cpp'
+      });
+
+    // Setup MathJax
+      MathJax.Hub.Config({
+          tex2jax: {
+              inlineMath: [['$','$'], ['\\(','\\)']],
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+          }
+      });
+
+      MathJax.Hub.Configured();
+
+      return slideshow;
+    }
+  </script>
+  <script src="mermaid.js"></script>
+  <link rel="stylesheet" href="mermaid.css">
+  <script>mermaid.initialize({startOnLoad:true});</script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS_HTML&delayStartupUntil=configured" type="text/javascript"></script>
+
+
+</head>
+<body onload="slideshow = create()">
+</body>
+</html>
