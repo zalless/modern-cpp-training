@@ -1281,16 +1281,15 @@ struct impedance
 
 # `std::any`
 
----
-
 
 - single value container
 - keeps type information
 - can hold an arbitrary type
+- implementations should use Small Buffer Optimization technique to avoid heap allocation for small types
 
 --
 
-`std::any` is essentially type-safe replacement of `void*`
+Essentially, `std::any` is a type-safe replacement of `void*`
 
 ---
 ```
@@ -1450,6 +1449,9 @@ EXPECT_EQ(a1, a2);
 ## Example: Database record
 
 .col-6[
+
+Type un-safe
+
 ```
 struct DatabaseRecord
 {
@@ -1488,6 +1490,9 @@ bar.doBar(); // undefined behavior
 --
 
 .col-6[
+
+Type safe
+
 ```
 struct DatabaseRecord
 {
@@ -1520,7 +1525,6 @@ else
 
 ```
 auto it = std::find(database.begin(), database.end(), "rec1");
-Bar* bar = it->userData;
 Bar* bar = std::any_cast<Bar*>(it->userData);
 if (bar)
     bar.doBar();
@@ -1531,7 +1535,85 @@ else
 ]
 
 ---
-layout: true
+
+## Small Buffer Optimization
+
+- All known Standard Library implementations employ Small Buffer Optimization technique
+- For 'small objects' objects stored in side `std::any` there's no heap allocation
+- What 'small object' is depends on the implementation e.g.:
+    * GCC: 8 bytes or less
+    * Clang: 24 bytes or less
+
+
+---
+
+## Small Buffer Optimization
+
+.col-6[
+```
+struct Large
+{
+    Large() { std::cout << "Constructing Large\n"; }
+   
+    void* operator new(size_t s)
+    {
+        std::cout << "Allocating Large\n";
+        return ::operator new(s);
+    }
+
+*   char b[100];
+};
+
+int main()
+{
+    std::any a{Large{}};
+}
+```
+
+```bash
+Constructing Large
+Allocating Large
+
+```
+]
+
+--
+
+.col-6[
+```
+struct Small
+{
+    Small() { std::cout << "Constructing Small\n"; }
+    
+    void* operator new(size_t s)
+    {
+        std::cout << "Allocating Small\n";
+        return ::operator new(s);
+    }
+
+*   char b[1];
+};
+
+int main()
+{
+    std::any a{Small{}};
+}
+```
+
+```bash
+Constructing Small
+
+```
+]
+
+---
+
+
+## Small Buffer Optimization
+
+How it works?
+
+---
 
 .col-6[
 ```
@@ -1542,10 +1624,13 @@ public:
 
     any(const any& other) {/*...*/}
     
-    any(any&& other) {/*...*/}
+    any(any&& other) noexcept {/*...*/}
 
     template <typename T>
-    any(T&& value) {/*...*/}
+    any(T&& value) 
+    {
+*        TypeHandler<T>::create(*this, std::forward<T>(value));
+    }
 
     ~any() {/*...*/}
 
@@ -1556,301 +1641,562 @@ public:
     // Rest of methods and operators...
 
 private:
-    void* mStorage = nullptr;
-    /* Some type information */
+*    void* mStorage = nullptr;
+    
+    /* Type information */
+    using HandleFuncPtr =  void* (*)(Action, any const *, 
+                                     any *, const std::type_info *,
+                                     const void*fallback_info);
+*    HandlerFuncPtr mHandler = nullptr;
+
     
 ```
 ]
 
----
-
---
 .col-6[
 ```
 template <typename T>
 struct TypeHandler
 {
+    static void* handle(Action act, any const * _this, any * other,
+                           type_info const * info, const void* fallback_info)
+     {
+        switch (act)
+        {
+        case Action::Destroy:
+            destroy(const_cast<any &>(*_this)); return nullptr;
+        case Action::Copy:
+            copy(*_this, *other); return nullptr;
+        case Action::Move:
+            move(const_cast<any &>(*_this), *other); return nullptr;
+        case Action::Get:
+            return get(const_cast<any &>(*_this), info, fallback_info);
+        case Action::TypeInfo:
+            return type_info();
+        }
+      
+    }
+
     template <typename... Args>
-    T& create(any& dest, Args&&... args)
+    static T& create(any& dest, Args&&... args)
     {
 *        auto p        = std::make_unique<T>(std::forward<Args>()...);
 *        auto ret      = p.release();
 *        dest.mStorage = ret;
+*        dest.mHandler = &TypeHandler::handle;
 *        return *ret;
     }
 
-    void destroy(any& _this)
-    {/*...*/ }
-
-    void copy(any const& _this, any& _dest)
-    {/*...*/ }
-
-    void move(any& _this, any& _dest)
-    {/*...*/ }
-
-    void* get(any& _this, const std::type_info& _info)
-    {/*...*/ }
-
-    const std::type_info& typeInfo()
-    {/*...*/ }
+    static void destroy(any& _this) {/*...*/ }
+    static void copy(any const& _this, any& _dest) {/*...*/ }
+    static void move(any& _this, any& _dest) {/*...*/ }
+    static void* get(any& _this, const std::type_info& _info) {/*...*/ }
+    static void* typeInfo() {/*...*/ }
 };
 ```
 ]
 
 ---
-
-.col-6[
-```
-template <typename T>
-struct TypeHandler
-{
-    template <typename... Args>
-    T& create(any& dest, Args&&... args)
-    {/*...*/ }
-
-    void destroy(any& _this)
-    {
-*        delete static_cast<T*>(_this.mStorage);
-    }
-
-    void copy(any const& souce, any&_dest)
-    {/*...*/ }
-
-    void move(any& source, any& dest)
-    {/*...*/ }
-
-    void* get(any& _this, const std::type_info& info)
-    {/*...*/ }
-
-    const std::type_info& typeInfo()
-    {/*...*/ }
-};
-```
-]
-
----
-
-.col-6[
-```
-template <typename T>
-struct TypeHandler
-{
-    template <typename... Args>
-    T& create(any& dest, Args&&... args)
-    {/*...*/ }
-
-    void destroy(any& _this)
-    {/*...*/ }
-
-    void copy(any const& source, any& dest)
-    {
-*        create(dest, *static_cast<T const*>(source.mStorage));
-    }
-
-    void move(any& source, any& dest)
-
-    void* get(any& _this, const std::type_info& info)
-    {/*...*/ }
-
-    const std::type_info& typeInfo()
-    {/*...*/ }
-};
-```
-]
-
----
-
-.col-6[
-```
-template <typename T>
-struct TypeHandler
-{
-    template <typename... Args>
-    T& create(any& dest, Args&&... args)
-    {/*...*/ }
-
-    void destroy(any& _this)
-    {/*...*/ }
-
-    void copy(any const& source, any& dest)
-    {/*...*/ }
-
-    void move(any& source, any& dest)
-    {
-*        dest.mStorage = source.mStorage;
-*        source.mStorage = nullptr;
-    }
-
-    void* get(any& _this, const std::type_info& info)
-    {/*...*/ }
-
-    const std::type_info& typeInfo()
-    {/*...*/ }
-};
-```
-]
-
----
-
-.col-6[
-```
-template <typename T>
-struct TypeHandler
-{
-    template <typename... Args>
-    T& create(any& dest, Args&&... args)
-    {/*...*/ }
-
-    void destroy(any& _this)
-    {/*...*/ }
-
-    void copy(any const& source, any& dest)
-    {/*...*/ }
-
-    void move(any& source, any& dest)
-    {/*...*/ }
-
-    void* get(any& _this, const std::type_info& info)
-    {
-*        if (typeid(T) == info)
-*            return _this.mStorage);
-*        return nullptr;
-    }
-
-    const std::type_info& typeInfo()
-    {/*...*/ }
-};
-```
-]
-
----
-
-.col-6[
-```
-template <typename T>
-struct TypeHandler
-{
-    template <typename... Args>
-    T& create(any& dest, Args&&... args)
-    {/*...*/ }
-
-    void destroy(any& _this)
-    {/*...*/ }
-
-    void copy(any const& source, any& dest)
-    {/*...*/ }
-
-    void move(any& source, any& dest)
-    {/*...*/ }
-
-    void* get(any& _this, const std::type_info& info)
-    {/*...*/ }
-
-    const std::type_info& typeInfo()
-    {
-*        return typeid(T);
-    }
-};
-```
-]
-
-
----
-layout: false
 
 .col-6[
 ```
 class any
 {
 public:
-    any() = default;
+    any() {/*...*/}
 
-    any(const any& other) 
-    { 
-        mHandler.copy(other, *this); 
-    }
+    any(const any& other) {/*...*/}
     
-    any(any&& other)
-    { 
-        mHandler.move(other, *this); 
-    }
+    any(any&& other) noexcept {/*...*/}
 
     template <typename T>
-    any(T&& value)
+    any(T&& value) 
     {
-*        TypeHandler<T> handler;
-*        handler.create(*this, value);
+        TypeHandler<T>::create(*this, std::forward<T>(value));
     }
 
-    ~any() 
-    {
-        reset();
-    }
+*   ~any() {reset();}
 
     void reset() 
     {
-        mHandler.destroy(*this);
+*       mHandler(Action::Destroy, this);
     }
 
-    const std::type_info& type() const
-    {
-        return mHandler.typeInfo();
-    }
+    const std::type_info& type() const {/*...*/}
 
     // Rest of methods and operators...
 
 private:
-    void* mStorage = nullptr;
-*    std::unique_ptr<IHandler> mHandler;
+*    void* mStorage = nullptr;
+    
+    /* Type information */
+    using HandleFuncPtr =  void* (*)(Action, any const *, 
+                                     any *, const std::type_info *,
+                                     const void*fallback_info);
+*    HandlerFuncPtr mHandler = nullptr;
+
     
 ```
 ]
 
 .col-6[
 ```
-
-struct ITypeHandler
-{
-    virtual ~ITypeHandler() = default;
-
-    virtual void destroy(any& _this) = 0;
-
-    virtual void copy(any const& source, any& dest) = 0;
-
-    virtual void move(any& source, any& dest) = 0;
-
-    virtual void* get(any& _this, const std::type_info& info) = 0;
-
-    virtual const std::type_info& typeInfo() = 0;
-};
-
 template <typename T>
-*struct TypeHandler : ITypeHandler
+struct TypeHandler
 {
+    static void* handle(Action act, any const * _this, any * other,
+                           type_info const * info, const void* fallback_info)
+     {
+        switch (act)
+        {
+*       case Action::Destroy:
+*           destroy(const_cast<any &>(*_this)); return nullptr;
+        case Action::Copy:
+            copy(*_this, *other); return nullptr;
+        case Action::Move:
+            move(const_cast<any &>(*_this), *other); return nullptr;
+        case Action::Get:
+            return get(const_cast<any &>(*_this), info, fallback_info);
+        case Action::TypeInfo:
+            return type_info();
+        }
+      
+    }
+
     template <typename... Args>
-    T& create(any& dest, Args&&... args)
+    static T& create(any& dest, Args&&... args) {/*...*/ }
+
+    static void destroy(any& _this)
+    {
+*        delete static_cast<T*>(_this.mStorage);
+*        _this.mHandler = nullptr;
+    }
+
+    static void copy(any const& _this, any& _dest) {/*...*/ }
+    static void move(any& _this, any& _dest) {/*...*/ }
+    static void* get(any& _this, const std::type_info& _info) {/*...*/ }
+    static void* typeInfo() {/*...*/ }
+};
+```
+]
+
+---
+
+.col-6[
+```
+class any
+{
+public:
+    any() {/*...*/}
+
+    any(const any& other)
+    {
+*        mHandler(Action::copy, this, &other);
+    }
+    
+    any(any&& other) noexcept {/*...*/}
+
+    template <typename T>
+    any(T&& value) 
+    {
+        TypeHandler<T>::create(*this, std::forward<T>(value));
+    }
+
+    ~any() {reset();}
+
+    void reset() 
+    {
+        mHandler(Action::Destroy, this);
+    }
+
+    const std::type_info& type() const {/*...*/}
+
+    // Rest of methods and operators...
+
+private:
+*    void* mStorage = nullptr;
+    
+    /* Type information */
+    using HandleFuncPtr =  void* (*)(Action, any const *, 
+                                     any *, const std::type_info *,
+                                     const void*fallback_info);
+*    HandlerFuncPtr mHandler = nullptr;
+
+    
+```
+]
+
+.col-6[
+```
+template <typename T>
+struct TypeHandler
+{
+    static void* handle(Action act, any const * _this, any * other,
+                           type_info const * info, const void* fallback_info)
+     {
+        switch (act)
+        {
+        case Action::Destroy:
+           destroy(const_cast<any &>(*_this)); return nullptr;
+*       case Action::Copy:
+*          copy(*_this, *other); return nullptr;
+        case Action::Move:
+            move(const_cast<any &>(*_this), *other); return nullptr;
+        case Action::Get:
+            return get(const_cast<any &>(*_this), info, fallback_info);
+        case Action::TypeInfo:
+            return type_info();
+        }
+      
+    }
+
+    template <typename... Args>
+    static T& create(any& dest, Args&&... args) {/*...*/ }
+    static void destroy(any& _this) {/*...*/ }
+
+    static void copy(any const& _this, any& _dest)
+    {
+*       create(dest, static_cast<const T&>(*_this.mStorage);
+    }
+    
+    static void move(any& _this, any& _dest) {/*...*/ }
+    static void* get(any& _this, const std::type_info& _info) {/*...*/ }
+    static void* typeInfo() {/*...*/ }
+};
+```
+]
+
+---
+
+.col-6[
+```
+class any
+{
+public:
+    any() {/*...*/}
+
+    any(const any& other)
+    {
+        mHandler(Action::Copy, this, &other);
+    }
+    
+    any(any&& other) noexcept
+    {
+*        mHandler(Action::Move, this, &other);
+    }
+
+    template <typename T>
+    any(T&& value) 
+    {
+        TypeHandler<T>::create(*this, std::forward<T>(value));
+    }
+
+    ~any() {reset();}
+
+    void reset() 
+    {
+        mHandler(Action::Destroy, this);
+    }
+
+    const std::type_info& type() const {/*...*/}
+
+    // Rest of methods and operators...
+
+private:
+*    void* mStorage = nullptr;
+    
+    /* Type information */
+    using HandleFuncPtr =  void* (*)(Action, any const *, 
+                                     any *, const std::type_info *,
+                                     const void*fallback_info);
+*    HandlerFuncPtr mHandler = nullptr;
+
+    
+```
+]
+
+.col-6[
+```
+template <typename T>
+struct TypeHandler
+{
+    static void* handle(Action act, any const * _this, any * other,
+                           type_info const * info, const void* fallback_info)
+     {
+        switch (act)
+        {
+        case Action::Destroy:
+           destroy(const_cast<any &>(*_this)); return nullptr;
+        case Action::Copy:
+           copy(*_this, *other); return nullptr;
+*       case Action::Move:
+*           move(const_cast<any &>(*_this), *other); return nullptr;
+        case Action::Get:
+            return get(const_cast<any &>(*_this), info, fallback_info);
+        case Action::TypeInfo:
+            return type_info();
+        }
+      
+    }
+
+    template <typename... Args>
+    static T& create(any& dest, Args&&... args) {/*...*/ }
+    static void destroy(any& _this) {/*...*/ }
+    static void copy(any const& _this, any& _dest){/*...*/ }
+
+    static void move(any& _this, any& _dest)
+    {
+*      dest.mStorage = _this.mStorage
+*      dest.mHandler = &TypeHandler::handle;
+*      _this.mHandler = nullptr;
+    }
+    
+    static void* get(any& _this, const std::type_info& _info) {/*...*/ }
+    static void* typeInfo() {/*...*/ }
+};
+```
+]
+
+---
+
+.col-6[
+```
+class any
+{
+public:
+    /*...*/
+
+private:
+*    union Storage
+*    {
+*        void* ptr = nullptr;
+*        std::array<std::byte, sizeof(void*)> buffer;
+*    }
+*    Storage mStorage;
+    
+    /* Type information */
+    using HandleFuncPtr =  void* (*)(Action, any const *, 
+                                     any *, const std::type_info *,
+                                     const void*fallback_info);
+    HandlerFuncPtr mHandler = nullptr;
+
+    
+```
+]
+
+--
+
+.col-6[
+```
+template <typename T>
+struct LargeTypeHandler
+{
+    static void* handle(Action act, any const * _this, any * other,
+                           type_info const * info, const void* fallback_info)
+    { /*...*/ }
+
+    template <typename... Args>
+    static T& create(any& dest, Args&&... args)
     {
         auto p        = std::make_unique<T>(std::forward<Args>()...);
         auto ret      = p.release();
-        dest.mStorage = ret;
-*       dest.mHandler= std::make_unique<TypeHandler<T>>(*this);
+*        dest.mStorage.ptr = ret;
+        dest.mHandler = &TypeHandler::handle;
         return *ret;
+
     }
+    static void destroy(any& _this) {/*...*/ }
+    static void copy(any const& _this, any& _dest){/*...*/ }
 
-    void destroy(any& _this) override
-    {/*...*/ }
+    static void move(any& _this, any& _dest)
+    {
+*      dest.mStorage.ptr = _this.mStorage.ptr
+       dest.mHandler = &TypeHandler::handle;
+      _this.mHandler = nullptr;
+    }
+    
+    static void* get(any& _this, const std::type_info& _info) {/*...*/ }
+    static void* typeInfo() {/*...*/ }
+};
+```
+]
 
-    void copy(any const& source, any& dest) override
-    {/*...*/ }
+---
 
-    void move(any& source, any& dest) override
-    {/*...*/ }
+.col-6[
+```
+template <typename T>
+struct LargeTypeHandler
+{
+    static void* handle(Action act, any const * _this, any * other,
+                           type_info const * info, const void* fallback_info)
+    { /*...*/ }
 
-    void* get(any& _this, const std::type_info& info) override
-    {/*...*/ }
+    template <typename... Args>
+    static T& create(any& dest, Args&&... args)
+    {
+*        auto p        = std::make_unique<T>(std::forward<Args>()...);
+*        auto ret      = p.release();
+*        dest.mStorage.ptr = ret;
+*        dest.mHandler = &LargeTypeHandler::handle;
+*        return *ret;
 
-    const std::type_info& typeInfo() override
-    {/*...*/ }
+    }
+    static void destroy(any& _this) {/*...*/ }
+    static void copy(any const& _this, any& _dest){/*...*/ }
+    static void move(any& _this, any& _dest){/*...*/ }
+    static void* get(any& _this, const std::type_info& _info) {/*...*/ }
+    static void* typeInfo() {/*...*/ }
+};
+```
+
+Dynamic allocation.
+
+]
+
+.col-6[
+```
+template <typename T>
+struct SmallTypeHandler
+{
+    static void* handle(Action act, any const * _this, any * other,
+                           type_info const * info, const void* fallback_info)
+    { /*...*/ }
+
+    template <typename... Args>
+    static T& create(any& dest, Args&&... args)
+    {
+*        T* ret = ::new (static_cast<void*>(&dest.mStorage.buffer)) 
+*                            T{std::forward<_Args>(args)...};
+*        dest.mHandler = &_SmallTypeHandler::handle;
+*        return *ret;
+    }
+    static void destroy(any& _this) {/*...*/ }
+    static void copy(any const& _this, any& _dest){/*...*/ }
+    static void move(any& _this, any& _dest){/*...*/ }
+    static void* get(any& _this, const std::type_info& _info) {/*...*/ }
+    static void* typeInfo() {/*...*/ }
+};
+```
+]
+
+Constructing object in the existing buffer using placement `new`.
+
+---
+
+.col-6[
+```
+template <typename T>
+struct LargeTypeHandler
+{
+    static void* handle(Action act, any const * _this, any * other,
+                           type_info const * info, const void* fallback_info)
+    { /*...*/ }
+
+    template <typename... Args>
+    static T& create(any& dest, Args&&... args) {/*...*/ }
+    static void destroy(any& _this)
+    {
+*        delete static_cast<T*>(_this.mStorage.ptr);
+*        _this.mHandler = nullptr;
+    }
+    static void copy(any const& _this, any& _dest){/*...*/ }
+    static void move(any& _this, any& _dest){/*...*/ }
+    static void* get(any& _this, const std::type_info& _info) {/*...*/ }
+    static void* typeInfo() {/*...*/ }
+};
+```
+
+Releasing allocated heap memory;
+
+]
+
+.col-6[
+```
+template <typename T>
+struct SmallTypeHandler
+{
+    static void* handle(Action act, any const * _this, any * other,
+                           type_info const * info, const void* fallback_info)
+    { /*...*/ }
+
+    template <typename... Args>
+    static T& create(any& dest, Args&&... args) {/*...*/ }
+    static void destroy(any& _this)
+    {
+*        T& value = *static_cast<T*>(
+*            static_cast<void*>(&_this.mStorage.buffer));
+*        value.~_Tp();
+*        _this.mHandler = nullptr;
+
+    }
+    static void copy(any const& _this, any& _dest){/*...*/ }
+    static void move(any& _this, any& _dest){/*...*/ }
+    static void* get(any& _this, const std::type_info& _info) {/*...*/ }
+    static void* typeInfo() {/*...*/ }
+};
+```
+
+Just calling the desctructor.
+]
+
+
+
+---
+
+.col-6[
+```
+template <typename T>
+struct LargeTypeHandler
+{
+    static void* handle(Action act, any const * _this, any * other,
+                           type_info const * info, const void* fallback_info)
+    { /*...*/ }
+
+    template <typename... Args>
+    static T& create(any& dest, Args&&... args) {/*...*/ }
+    static void destroy(any& _this) {/*...*/ }
+    static void copy(any const& _this, any& _dest)
+    {
+*       create(dest, static_cast<const T&>(*_this.mStorage.ptr);
+    }
+    static void move(any& _this, any& _dest)
+    {
+*      dest.mStorage = _this.mStorage
+*      dest.mHandler = &LargeTypeHandler::handle;
+*      _this.mHandler = nullptr;
+    }
+    static void* get(any& _this, const std::type_info& _info) {/*...*/ }
+    static void* typeInfo() {/*...*/ }
+};
+```
+]
+
+.col-6[
+```
+template <typename T>
+struct SmallTypeHandler
+{
+    static void* handle(Action act, any const * _this, any * other,
+                           type_info const * info, const void* fallback_info)
+    { /*...*/ }
+
+    template <typename... Args>
+    static T& create(any& dest, Args&&... args) {/*...*/ }
+    static void destroy(any& _this) {/*...*/ }
+    static void copy(any const& _this, any& _dest)
+    {
+*      create(dest, static_cast<const T&>(
+*            *static_cast<void const *>(&_this.mStorage.buffer)));
+    }
+    static void move(any& _this, any& _dest)
+    {
+*        create(dest, std::move(
+*            static_cast<T&>(*static_cast<void*>(&_this.mStorage.buffer))));
+*        destroy(_this);
+    }
+    static void* get(any& _this, const std::type_info& _info) {/*...*/ }
+    static void* typeInfo() {/*...*/ }
 };
 ```
 ]
@@ -1862,96 +2208,239 @@ template <typename T>
 class any
 {
 public:
-    any() = default;
-
-    any(const any& other) 
-    { 
-*        mHandler.copy(other, *this); 
-    }
-    
-    any(any&& other)
-    { 
-*        mHandler.move(other, *this); 
-    }
+    /*...*/
 
     template <typename T>
-    any(T&& value)
+    any(T&& value) 
     {
-        TypeHandler<T> handler;
-        handler.create(*this, value);
+*        using HandlerType = std::condtional_t<sizeof(T) > (sizeof(void*), 
+*                                              LargeTypeHandler<T>, 
+*                                              SmallTypeHandler<T>>;
+*        HandlerType::create(*this, std::forward<T>(value));
     }
-
-    ~any() 
-    {
-        reset();
-    }
-
-    void reset() 
-    {
-        mHandler.destroy(*this);
-    }
-
-    const std::type_info& type() const
-    {
-        return mHandler.typeInfo();
-    }
-
-    // Rest of methods and operators...
 
 private:
-    void* mStorage = nullptr;
-*    std::unique_ptr<IHandler> mHandler;
+*    union Storage
+*    {
+*        void* ptr = nullptr;
+*        std::array<std::byte, sizeof(void*)> buffer;
+*    }
+*    Storage mStorage;
+    
+    /* Type information */
+    using HandleFuncPtr =  void* (*)(Action, any const *, 
+                                     any *, const std::type_info *,
+                                     const void*fallback_info);
+    HandlerFuncPtr mHandler = nullptr;
+
     
 ```
 ]
 
+
+.col-6[
+
+- Static buffer implementation is selected if `sizeof(T) <= sizeof(void*)`
+- Dynamic heap allocation is selected otherwise
+
+]
+
+---
+
+## Small Buffer Optimization
+
 .col-6[
 ```
-
-struct ITypeHandler
+struct Small
 {
-    virtual ~ITypeHandler() = default;
+    Small() { std::cout << "Constructing Small\n"; }
+    
+    void* operator new(size_t s)
+    {
+        std::cout << "Allocating Small\n";
+        return ::operator new(s);
+    }
 
-    virtual void destroy(any& _this) = 0;
-
-    virtual void copy(any const& source, any& dest) = 0;
-
-    virtual void move(any& source, any& dest) = 0;
-
-    virtual void* get(any& _this, const std::type_info& info) = 0;
-
-    virtual const std::type_info& typeInfo() = 0;
+   char b[1];
 };
 
-template <typename T>
-*struct TypeHandler : ITypeHandler
+int main()
 {
-    template <typename... Args>
-    T& create(any& dest, Args&&... args)
-    {/*...*/ }
+    std::any a{Small{}};
+}
+```
 
-    void destroy(any& _this) override
-    {/*...*/ }
+```bash
+Constructing Small
 
-    void copy(any const& source, any& dest) override
+```
+]
+
+---
+
+.row[
+.col-6[
+```
+struct Small
+{
+    Small() { std::cout << "Constructing Small\n"; }
+
+*   Small(const Small& other) = default;
+    
+*   Small(Small&& other) {b[0] = other.b[0];}
+    
+    void* operator new(size_t s)
     {
-*        create(dest, *static_cast<T const*>(source.mStorage));
+        std::cout << "Allocating Small\n";
+        return ::operator new(s);
     }
 
-    void move(any& source, any& dest) override
+   char b[1];
+};
+
+int main()
+{
+    std::any a{Small{}};
+}
+```
+]
+]
+
+--
+
+.row[
+.col-6[
+```bash
+Constructing Small
+Allocating Small
+```
+]
+]
+
+---
+
+.row[
+.col-6[
+```
+struct Small
+{
+    Small() { std::cout << "Constructing Small\n"; }
+
+*   Small(const Small& other) = default;
+    
+*   Small(Small&& other) {b[0] = other.b[0];}
+    
+    void* operator new(size_t s)
     {
-         dest.mStorage = source.mStorage;
-         source.mStorage = nullptr;
-*        dest.mHandler = std::move(source.mHandler);
+        std::cout << "Allocating Small\n";
+        return ::operator new(s);
     }
 
-    void* get(any& _this, const std::type_info& info) override
-    {/*...*/ }
+   char b[1];
+};
 
-    const std::type_info& typeInfo() override
-    {/*...*/ }
+int main()
+{
+    std::any a{Small{}};
+}
+```
+]
+
+.col-6[
+> Implementations are encouraged to avoid dynamic allocations for small objects, 
+> but such an optimization may only be applied to types for which 
+> std::is_nothrow_move_constructible returns true.
+]
+
+]
+
+.row[
+.col-6[
+```bash
+Constructing Small
+Allocating Small
+```
+]
+]
+
+---
+
+.row[
+.col-6[
+```
+struct Small
+{
+    Small() { std::cout << "Constructing Small\n"; }
+
+    Small(const Small& other) = default;
+    
+*   Small(Small&& other) noexcept {b[0] = other.b[0];}
+    
+    void* operator new(size_t s)
+    {
+        std::cout << "Allocating Small\n";
+        return ::operator new(s);
+    }
+
+   char b[1];
+};
+
+int main()
+{
+    std::any a{Small{}};
+}
+```
+]
+
+.col-6[
+`noexcept` keyword insures that the function does not throw.
+]
+
+]
+
+--
+
+.row[
+.col-6[
+```bash
+Constructing Small
+```
+]
+]
+
+--
+.row[
+.col-6[
+```
+class any
+{
+public:
+*    any(any&& other) noexcept {/*...*/}
 };
 ```
+]
+
+.col-6[
+- move constructor of `std::any` must gurantee not to throw
+- if type's T move constructror may throw `std::any` cannot call it not to violate the noexcept gurantee
+- in such case it will resort to heap allocation even for small types
+]
+
+]
+---
+
+.col-6[
+```
+class any
+{
+public:
+*    any(any&& other) noexcept {/*...*/}
+};
+```
+]
+
+.col-6[
+... but why is `std::any` move constructor `noexcept` in the first place ?
 ]
 
 ---
