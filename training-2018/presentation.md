@@ -1279,7 +1279,685 @@ struct impedance
 
 ---
 
-#Class template parameter deduction
+# `std::any`
+
+---
+
+
+- single value container
+- keeps type information
+- can hold an arbitrary type
+
+--
+
+`std::any` is essentially type-safe replacement of `void*`
+
+---
+```
+std::any a1 = 123;
+*EXPECT_EQ(123, *std::any_cast<int*>(a1));
+*EXPECT_EQ(123, std::any_cast<int&>(a1));
+EXPECT_EQ(nullptr, std::any_cast<double*>(a1));
+EXPECT_THROW(std::any_cast<double&>(a1), std::bad_any_cast);
+a1 = std::string{"any string"};
+EXPECT_EQ("any_string", std::any_cast<std::string&>(a1));
+
+struct Foo
+{
+    Foo(int i, double d){/*...*/}
+};
+
+// Constructs Foo in-place
+a1.emplace<Foo>(10, 0.5);
+
+std::any a2{std::in_place_type_t<Foo>{}, 10, 0.5}; // in place construction
+EXPECT_EQ(a1, a2);
+
+auto a3 = std::make_any<Foo>(10, 0.5); // in place construction
+EXPECT_EQ(a1, a3);
+
+```
+---
+```
+std::any a1 = 123;
+EXPECT_EQ(123, *std::any_cast<int*>(a1));
+EXPECT_EQ(123, std::any_cast<int&>(a1));
+*EXPECT_EQ(nullptr, std::any_cast<double*>(a1));
+*EXPECT_THROW(std::any_cast<double&>(a1), std::bad_any_cast);
+a1 = std::string{"any string"};
+EXPECT_EQ("any_string", std::any_cast<std::string&>(a1));
+
+struct Foo
+{
+    Foo(int i, double d){/*...*/}
+};
+
+// Constructs Foo in-place
+a1.emplace<Foo>(10, 0.5);
+
+std::any a2{std::in_place_type_t<Foo>{}, 10, 0.5}; // in place construction
+EXPECT_EQ(a1, a2);
+
+auto a3 = std::make_any<Foo>(10, 0.5); // in place construction
+EXPECT_EQ(a1, a3);
+
+```
+
+---
+```
+std::any a1 = 123;
+EXPECT_EQ(123, *std::any_cast<int*>(a1));
+EXPECT_EQ(123, std::any_cast<int&>(a1));
+EXPECT_EQ(nullptr, std::any_cast<double*>(a1));
+EXPECT_THROW(std::any_cast<double&>(a1), std::bad_any_cast);
+*a1 = std::string{"any string"};
+*EXPECT_EQ("any_string", std::any_cast<std::string&>(a1));
+
+struct Foo
+{
+    Foo(int i, double d){/*...*/}
+};
+
+// Constructs Foo in-place
+a1.emplace<Foo>(10, 0.5);
+
+std::any a2{std::in_place_type_t<Foo>{}, 10, 0.5}; // in place construction
+EXPECT_EQ(a1, a2);
+
+auto a3 = std::make_any<Foo>(10, 0.5); // in place construction
+EXPECT_EQ(a1, a3);
+
+```
+
+---
+```
+std::any a1 = 123;
+EXPECT_EQ(123, *std::any_cast<int*>(a1));
+EXPECT_EQ(123, std::any_cast<int&>(a1));
+EXPECT_EQ(nullptr, std::any_cast<double*>(a1));
+EXPECT_THROW(std::any_cast<double&>(a1), std::bad_any_cast);
+a1 = std::string{"any string"};
+EXPECT_EQ("any_string", std::any_cast<std::string&>(a1));
+
+struct Foo
+{
+    Foo(int i, double d);
+};
+
+// Constructs Foo in-place
+*a1.emplace<Foo>(10, 0.5);
+
+std::any a2{std::in_place_type_t<Foo>{}, 10, 0.5}; // in place construction
+EXPECT_EQ(a1, a2);
+
+auto a3 = std::make_any<Foo>(10, 0.5); // in place construction
+EXPECT_EQ(a1, a3);
+
+```
+
+---
+```
+std::any a1 = 123;
+EXPECT_EQ(123, *std::any_cast<int*>(a1));
+EXPECT_EQ(123, std::any_cast<int&>(a1));
+EXPECT_EQ(nullptr, std::any_cast<double*>(a1));
+EXPECT_THROW(std::any_cast<double&>(a1), std::bad_any_cast);
+a1 = std::string{"any string"};
+EXPECT_EQ("any_string", std::any_cast<std::string&>(a1));
+
+struct Foo
+{
+    Foo(int i, double d);
+};
+
+// Constructs Foo in-place
+a1.emplace<Foo>(10, 0.5);
+
+*std::any a2{std::in_place_type_t<Foo>{}, 10, 0.5}; // in place construction
+*EXPECT_EQ(a1, a2);
+
+auto a3 = std::make_any<Foo>(10, 0.5); // in place construction
+EXPECT_EQ(a1, a3);
+
+```
+---
+```
+std::any a1 = 123;
+EXPECT_EQ(123, *std::any_cast<int*>(a1));
+EXPECT_EQ(123, std::any_cast<int&>(a1));
+EXPECT_EQ(nullptr, std::any_cast<double*>(a1));
+EXPECT_THROW(std::any_cast<double&>(a1), std::bad_any_cast);
+a1 = std::string{"any string"};
+EXPECT_EQ("any_string", std::any_cast<std::string&>(a1));
+
+struct Foo
+{
+    Foo(int i, double d);
+};
+
+// Constructs Foo in-place
+a1.emplace<Foo>(10, 0.5);
+
+std::any a2{std::in_place_type_t<Foo>{}, 10, 0.5}; // in place construction
+EXPECT_EQ(a1, a2);
+
+*auto a3 = std::make_any<Foo>(10, 0.5); // in place construction
+*EXPECT_EQ(a1, a3);
+
+```
+---
+
+## Example: Database record
+
+.col-6[
+```
+struct DatabaseRecord
+{
+    std::string name;
+    std::chrono::time_point lastModified;
+    /* some generic schema */
+
+    void* userData = nulltpr;
+};
+```
+```
+std::vector<DatabaseRecord> database;
+
+DatabaseRecord record;
+record.name "rec1"
+
+record.userData = new Foo{};
+
+```
+
+```
+auto it = std::find(database.begin(), database.end(), "rec1");
+Foo* foo = static_cast<Foo*>(it->userData);
+foo.doFoo();
+
+```
+
+```
+auto it = std::find(database.begin(), database.end(), "rec1");
+Bar* bar = static_cast<Bar*>(it->userData);
+bar.doBar(); // undefined behavior
+
+```
+]
+
+--
+
+.col-6[
+```
+struct DatabaseRecord
+{
+    std::string name;
+    std::chrono::time_point lastModified;
+    /* some generic schema */
+
+    std::any userData;
+};
+```
+```
+std::vector<DatabaseRecord> database;
+
+DatabaseRecord record;
+record.name "rec1"
+
+record.userData = Foo{};
+
+```
+
+```
+auto it = std::find(database.begin(), database.end(), "rec1");
+Foo* foo = std::any_cast<Foo*>(it->userData);
+if (foo)
+    foo.doFoo();
+else
+    // error
+
+```
+
+```
+auto it = std::find(database.begin(), database.end(), "rec1");
+Bar* bar = it->userData;
+Bar* bar = std::any_cast<Bar*>(it->userData);
+if (bar)
+    bar.doBar();
+else
+    // error
+
+```
+]
+
+---
+layout: true
+
+.col-6[
+```
+class any
+{
+public:
+    any() {/*...*/}
+
+    any(const any& other) {/*...*/}
+    
+    any(any&& other) {/*...*/}
+
+    template <typename T>
+    any(T&& value) {/*...*/}
+
+    ~any() {/*...*/}
+
+    void reset() {/*...*/}
+
+    const std::type_info& type() const {/*...*/}
+
+    // Rest of methods and operators...
+
+private:
+    void* mStorage = nullptr;
+    /* Some type information */
+    
+```
+]
+
+---
+
+--
+.col-6[
+```
+template <typename T>
+struct TypeHandler
+{
+    template <typename... Args>
+    T& create(any& dest, Args&&... args)
+    {
+*        auto p        = std::make_unique<T>(std::forward<Args>()...);
+*        auto ret      = p.release();
+*        dest.mStorage = ret;
+*        return *ret;
+    }
+
+    void destroy(any& _this)
+    {/*...*/ }
+
+    void copy(any const& _this, any& _dest)
+    {/*...*/ }
+
+    void move(any& _this, any& _dest)
+    {/*...*/ }
+
+    void* get(any& _this, const std::type_info& _info)
+    {/*...*/ }
+
+    const std::type_info& typeInfo()
+    {/*...*/ }
+};
+```
+]
+
+---
+
+.col-6[
+```
+template <typename T>
+struct TypeHandler
+{
+    template <typename... Args>
+    T& create(any& dest, Args&&... args)
+    {/*...*/ }
+
+    void destroy(any& _this)
+    {
+*        delete static_cast<T*>(_this.mStorage);
+    }
+
+    void copy(any const& souce, any&_dest)
+    {/*...*/ }
+
+    void move(any& source, any& dest)
+    {/*...*/ }
+
+    void* get(any& _this, const std::type_info& info)
+    {/*...*/ }
+
+    const std::type_info& typeInfo()
+    {/*...*/ }
+};
+```
+]
+
+---
+
+.col-6[
+```
+template <typename T>
+struct TypeHandler
+{
+    template <typename... Args>
+    T& create(any& dest, Args&&... args)
+    {/*...*/ }
+
+    void destroy(any& _this)
+    {/*...*/ }
+
+    void copy(any const& source, any& dest)
+    {
+*        create(dest, *static_cast<T const*>(source.mStorage));
+    }
+
+    void move(any& source, any& dest)
+
+    void* get(any& _this, const std::type_info& info)
+    {/*...*/ }
+
+    const std::type_info& typeInfo()
+    {/*...*/ }
+};
+```
+]
+
+---
+
+.col-6[
+```
+template <typename T>
+struct TypeHandler
+{
+    template <typename... Args>
+    T& create(any& dest, Args&&... args)
+    {/*...*/ }
+
+    void destroy(any& _this)
+    {/*...*/ }
+
+    void copy(any const& source, any& dest)
+    {/*...*/ }
+
+    void move(any& source, any& dest)
+    {
+*        dest.mStorage = source.mStorage;
+*        source.mStorage = nullptr;
+    }
+
+    void* get(any& _this, const std::type_info& info)
+    {/*...*/ }
+
+    const std::type_info& typeInfo()
+    {/*...*/ }
+};
+```
+]
+
+---
+
+.col-6[
+```
+template <typename T>
+struct TypeHandler
+{
+    template <typename... Args>
+    T& create(any& dest, Args&&... args)
+    {/*...*/ }
+
+    void destroy(any& _this)
+    {/*...*/ }
+
+    void copy(any const& source, any& dest)
+    {/*...*/ }
+
+    void move(any& source, any& dest)
+    {/*...*/ }
+
+    void* get(any& _this, const std::type_info& info)
+    {
+*        if (typeid(T) == info)
+*            return _this.mStorage);
+*        return nullptr;
+    }
+
+    const std::type_info& typeInfo()
+    {/*...*/ }
+};
+```
+]
+
+---
+
+.col-6[
+```
+template <typename T>
+struct TypeHandler
+{
+    template <typename... Args>
+    T& create(any& dest, Args&&... args)
+    {/*...*/ }
+
+    void destroy(any& _this)
+    {/*...*/ }
+
+    void copy(any const& source, any& dest)
+    {/*...*/ }
+
+    void move(any& source, any& dest)
+    {/*...*/ }
+
+    void* get(any& _this, const std::type_info& info)
+    {/*...*/ }
+
+    const std::type_info& typeInfo()
+    {
+*        return typeid(T);
+    }
+};
+```
+]
+
+
+---
+layout: false
+
+.col-6[
+```
+class any
+{
+public:
+    any() = default;
+
+    any(const any& other) 
+    { 
+        mHandler.copy(other, *this); 
+    }
+    
+    any(any&& other)
+    { 
+        mHandler.move(other, *this); 
+    }
+
+    template <typename T>
+    any(T&& value)
+    {
+*        TypeHandler<T> handler;
+*        handler.create(*this, value);
+    }
+
+    ~any() 
+    {
+        reset();
+    }
+
+    void reset() 
+    {
+        mHandler.destroy(*this);
+    }
+
+    const std::type_info& type() const
+    {
+        return mHandler.typeInfo();
+    }
+
+    // Rest of methods and operators...
+
+private:
+    void* mStorage = nullptr;
+*    std::unique_ptr<IHandler> mHandler;
+    
+```
+]
+
+.col-6[
+```
+
+struct ITypeHandler
+{
+    virtual ~ITypeHandler() = default;
+
+    virtual void destroy(any& _this) = 0;
+
+    virtual void copy(any const& source, any& dest) = 0;
+
+    virtual void move(any& source, any& dest) = 0;
+
+    virtual void* get(any& _this, const std::type_info& info) = 0;
+
+    virtual const std::type_info& typeInfo() = 0;
+};
+
+template <typename T>
+*struct TypeHandler : ITypeHandler
+{
+    template <typename... Args>
+    T& create(any& dest, Args&&... args)
+    {
+        auto p        = std::make_unique<T>(std::forward<Args>()...);
+        auto ret      = p.release();
+        dest.mStorage = ret;
+*       dest.mHandler= std::make_unique<TypeHandler<T>>(*this);
+        return *ret;
+    }
+
+    void destroy(any& _this) override
+    {/*...*/ }
+
+    void copy(any const& source, any& dest) override
+    {/*...*/ }
+
+    void move(any& source, any& dest) override
+    {/*...*/ }
+
+    void* get(any& _this, const std::type_info& info) override
+    {/*...*/ }
+
+    const std::type_info& typeInfo() override
+    {/*...*/ }
+};
+```
+]
+
+---
+
+.col-6[
+```
+class any
+{
+public:
+    any() = default;
+
+    any(const any& other) 
+    { 
+*        mHandler.copy(other, *this); 
+    }
+    
+    any(any&& other)
+    { 
+*        mHandler.move(other, *this); 
+    }
+
+    template <typename T>
+    any(T&& value)
+    {
+        TypeHandler<T> handler;
+        handler.create(*this, value);
+    }
+
+    ~any() 
+    {
+        reset();
+    }
+
+    void reset() 
+    {
+        mHandler.destroy(*this);
+    }
+
+    const std::type_info& type() const
+    {
+        return mHandler.typeInfo();
+    }
+
+    // Rest of methods and operators...
+
+private:
+    void* mStorage = nullptr;
+*    std::unique_ptr<IHandler> mHandler;
+    
+```
+]
+
+.col-6[
+```
+
+struct ITypeHandler
+{
+    virtual ~ITypeHandler() = default;
+
+    virtual void destroy(any& _this) = 0;
+
+    virtual void copy(any const& source, any& dest) = 0;
+
+    virtual void move(any& source, any& dest) = 0;
+
+    virtual void* get(any& _this, const std::type_info& info) = 0;
+
+    virtual const std::type_info& typeInfo() = 0;
+};
+
+template <typename T>
+*struct TypeHandler : ITypeHandler
+{
+    template <typename... Args>
+    T& create(any& dest, Args&&... args)
+    {/*...*/ }
+
+    void destroy(any& _this) override
+    {/*...*/ }
+
+    void copy(any const& source, any& dest) override
+    {
+*        create(dest, *static_cast<T const*>(source.mStorage));
+    }
+
+    void move(any& source, any& dest) override
+    {
+         dest.mStorage = source.mStorage;
+         source.mStorage = nullptr;
+*        dest.mHandler = std::move(source.mHandler);
+    }
+
+    void* get(any& _this, const std::type_info& info) override
+    {/*...*/ }
+
+    const std::type_info& typeInfo() override
+    {/*...*/ }
+};
+```
+]
+
+---
+
+
+# Class template parameter deduction
 
 <!-- end class template parameter deduction -->
 
