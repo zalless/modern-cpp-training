@@ -2,11 +2,6 @@ title: Modern C++
 class: animation-fade
 layout: true
 
-<!-- This slide will serve as the base layout for all your slides -->
-.bottom-bar[
-  {{title}}
-]
-
 ---
 
 class: impact
@@ -18,17 +13,24 @@ class: impact
 
 class: chapter
 
-<!-- begin string_view -->
-
+## `const char*`
+## `std::string`
 ## `std::string_view`
 
 ---
 
 ## C-string vs `std::string`
-.bottom[
+
+.center[
 The general recommendation is: use `std::string` and avoid using C raw string.
 
 but...
+]
+
+--
+
+.center[
+... sometimes you just can't
 ]
 
 ---
@@ -44,8 +46,9 @@ void configureNetworkInterface(const std::string& ifname)
 ```
 
 --
+.emph[
 Who guarantees that ifname fits into the fixed-size ifr name buffer?
-
+]
 ---
 
 ## Interfacing with C API
@@ -59,7 +62,10 @@ void configureNetworkInterface(const std::string& ifname)
 ```
 
 --
+
+.emph[
 Less bad but still wrong - buffer is not null-terminated.
+]
 
 ---
 
@@ -75,12 +81,15 @@ void configureNetworkInterface(const std::string& ifname)
 ```
 
 --
+.emph[
 Correct but could be inefficient.
-
+]
 ---
 
 ## Safe string copy
 
+.row[
+.col-6[
 ``` cpp
 size_t safeStringCopy(const std::string& src, char* dest, size_t destLen)
 {
@@ -95,9 +104,17 @@ size_t safeStringCopy(const std::string& src, char* dest, size_t destLen)
 }
 
 ```
+]
+
+.col-6[
+- destination buffer is passed to the function and coping never reaches beyond it
+- the null terminator is added at the end
+]
+]
 
 --
 
+.col-6[
 ``` cpp
 void configureNetworkInterface(const std::string& ifname)
 {
@@ -105,30 +122,73 @@ void configureNetworkInterface(const std::string& ifname)
     safeStringCopy(ifname, ifr_ifr_name, sizeof(ifr.ifr_name));
 }
 ```
----
+]
 
+---
+class: middle
+
+.center[
 .alert[
 Never use `strcpy` to copy a string which lengh is not known at compile time into
     a fixed size array.
+]
 ]
 ---
 
 ## Fixed size buffer copy
 
+.row[
+.col-6[
 ```
 const int SIZE = 20;
 
 char s[SIZE];
 strcpy(s, "Sometimes seems OK");
 ```
+]
+]
 
 --
+
+.row[
+.col-6[
 ```
-const int SIZE = 20;
+*const int SIZE = 20;
 
 char s[SIZE];
 strcpy(s, "Sometimes seems NOT OK");
 ```
+]
+]
+
+---
+
+## Fixed size buffer copy
+
+```
+size_t safeStringCopy(const std::string& src, char* dest, size_t destLen)
+{
+    if (destLen == 0)
+    {
+        return 0;
+    }
+    auto len = std::min(src.length(), destLen - 1);
+    std::copy_n(src.begin(), len, dest);
+    dest[len] = '\0';
+    return len;
+}
+```
+```
+const int SIZE = 20;
+
+char s[SIZE];
+safeStringCopy(std::string{"Sometimes seems NOT OK"}, s, sizeof(s));
+```
+--
+
+.emph[
+Unnecessary string allocation.
+]
 
 ---
 
@@ -172,7 +232,11 @@ size_t safeStringCopy(const std::string& src, char* dest, size_t destLen)
     return len;
 }
 ```
+]
 
+--
+
+.col-6[
 ```
 size_t safeStringCopy(const char* src, char* dest, size_t destLen)
 {
@@ -187,6 +251,117 @@ size_t safeStringCopy(const char* src, char* dest, size_t destLen)
 }
 ```
 ]
+
+---
+
+.row[
+.col-6[
+```
+size_t safeStringCopy(const std::string& src, char* dest, size_t destLen)
+{
+    if (destLen == 0)
+    {
+        return 0;
+    }
+*   auto len = std::min(src.length(), destLen - 1);
+    std::copy_n(src.begin(), len, dest);
+    dest[len] = '\0';
+    return len;
+}
+```
+]
+
+
+.col-6[
+```
+size_t safeStringCopy(const char* src, char* dest, size_t destLen)
+{
+    if (destLen == 0)
+    {
+        return 0;
+    }
+*   auto len = std::min(strlen(src), destLen - 1);
+    std::copy_n(src, len, dest);
+    dest[len] = '\0';
+    return len;
+}
+```
+]
+]
+
+Implement the first function in terms of the second ?
+
+.row[
+.col-6[
+```
+size_t safeStringCopy(const std::string& src, char* dest, size_t destLen)
+{
+    return safeStringCopy(src.c_str(), dest, destLen);
+}
+```
+]
+
+
+.col-6[
+```
+size_t safeStringCopy(const char* src, char* dest, size_t destLen)
+{
+    if (destLen == 0)
+    {
+        return 0;
+    }
+    auto len = std::min(strlen(src), destLen - 1);
+    std::copy_n(src, len, dest);
+    dest[len] = '\0';
+    return len;
+}
+```
+]
+]
+
+--
+
+Efficiency issue: calculate length of `std::string`
+
+---
+
+## `std::string_view`
+
+.row[
+.col-6[
+```
+constexpr basic_string_view() noexcept;
+constexpr basic_string_view(const basic_string_view& other) noexcept;
+constexpr basic_string_view(const CharT* s, size_type count);
+constexpr basic_string_view(const CharT* s);
+```
+]
+
+.col-6[
+- 'reference' to const character sequences
+- provides `std::string`-like interface
+    * 
+]
+]
+
+--
+
+```
+std::string s = "Simple string";
+std::string_view sv = s;
+std::string_view sub_sv = sv.substr(0, 5); // sub_sv == "Simple"
+```
+--
+
+```
+const char* s = "Raw string";
+std::string_view sv = s;
+sv.remove_prefix(4);  // sv == "string";
+
+```
+
+
+---
 
 .col-6[
 ```
@@ -204,7 +379,13 @@ size_t safeStringCopy(std::string_view src, char* dest, size_t destLen)
 ```
 ]
 
+.col-6[
+- single function which serves both `std::string` and raw string
+]
+
 ---
+
+class: middle
 
 .note[
 Prefer passing **`std::string_view`** to a function over **`const std::string&`**
@@ -221,6 +402,9 @@ class WithString
     std::string mName;
 };
 
+
+std::vector<WithString> withString;
+
 ```
 ]
 
@@ -232,27 +416,37 @@ class WithCString
     char mName[20];
 };
 
+
+std::vector<WithCString> withCString;
+
 ```
 ]
 ]
 
 --
-### What is more efficient?
+.row[
+.center[
+What is more efficient?
+]
+]
 
 ---
 .row[
-.col-5[
-## `std::find` ]
-.col-5[
-## `std::sort` ]
-]
-.row[
-.col-5[
-<img src="string_vs_raw_find.jpeg" alt="drawing" width="450"/>
+.center[
+.col-6[
+### `std::find` ]]
+.center[
+.col-6[
+### `std::sort` ]]
 ]
 
-.col-5[
-<img src="string_vs_raw_sort.jpeg" alt="drawing" width="450"/>
+.row[
+.col-6[
+<img src="resources/string_vs_raw_find.jpeg" alt="drawing" width="450"/>
+]
+
+.col-6[
+<img src="resources/string_vs_raw_sort.jpeg" alt="drawing" width="450"/>
 ]
 ]
 ---
@@ -268,7 +462,9 @@ public:
 ```
 
 --
+.emph[
 Returns raw string forcing user to use raw string functions.
+]
 
 ---
 
@@ -283,7 +479,9 @@ public:
 ```
 
 --
+.emph[
 Returns `std::string` but requires a new copy of the original string.
+]
 
 ---
 
@@ -298,12 +496,16 @@ public:
 ```
 
 --
+.center[
 Returns `std::string_view`: no copy + nice string-like interface.
+]
 
 --
 
+.note[
 When a class keeps string data as char array the accessor member function should return
 **`std::string_view`** to that array.
+]
 
 ---
 
@@ -334,9 +536,42 @@ std::cout << sv << '\n';
 ```
 --
 
+.alert[
 **`std::string_view`** is a non-owning reference to the underlying string.
 If the string is deleted the `string_view` dangles.
+]
 
+---
+
+## `std::span<T>` (C++20)
+
+- an iterable view of the contiguous sequence of objects
+- does not own the underlying memory
+
+--
+
+```
+std::vector<int> v = {1,2,3,4,5};
+std::span<int> s(v);
+
+std::span<T> sub_s = s.subspan(0,2); // {1,2,3}
+
+```
+
+---
+
+class: chapter
+
+`decltype`
+
+.greyout[
+
+`<type_traits>`
+
+`std::integral_constant`
+
+`std::forward`
+]
 ---
 
 class: chapter
@@ -363,48 +598,260 @@ class: chapter
     * Haskell `Maybe` monad
 
 ---
+layout: true
 
 # `std::optional<T>`
 
-```
-std::optional<int> empty = std::nullopt;
-std::optional<int> value = 123;
+---
 
+.col-6[
+```
+*std::optional<int> empty = std::nullopt;
 EXPECT_FALSE(empty.has_value());
 EXPECT_THROW(empty.value(), std::bad_optional_access);
 EXPECT_EQ(10, empty.value_or(10));
 int x = *empty; // undefined behavior
 
 
+*std::optional<int> value = 123;
 EXPECT_TRUE(value.has_value());
+EXPECT_EQ(123, value.value());
+EXPECT_EQ(123, value.value_or(10));
+EXPECT_EQ(123, *value);
+```
+]
+
+.col-6[
+]
+
+---
+
+.col-6[
+```
+std::optional<int> empty = std::nullopt;
+*EXPECT_FALSE(empty.has_value());
+EXPECT_THROW(empty.value(), std::bad_optional_access);
+EXPECT_EQ(10, empty.value_or(10));
+int x = *empty; // undefined behavior
+
+
+std::optional<int> value = 123;
+*EXPECT_TRUE(value.has_value());
 EXPECT_EQ(123, value.value());
 EXPECT_EQ(123, value.value_or(10));
 EXPECT_EQ(123, *value);
 
 ```
+]
+
+.col-6[
+]
 
 ---
 
-# `std::optional<T>`
+.col-6[
+```
+std::optional<int> empty = std::nullopt;
+EXPECT_FALSE(empty.has_value());
+*EXPECT_THROW(empty.value(), std::bad_optional_access);
+EXPECT_EQ(10, empty.value_or(10));
+int x = *empty; // undefined behavior
 
+
+std::optional<int> value = 123;
+EXPECT_TRUE(value.has_value());
+*EXPECT_EQ(123, value.value());
+EXPECT_EQ(123, value.value_or(10));
+EXPECT_EQ(123, *value);
+
+```
+]
+
+.col-6[
+]
+
+---
+
+.col-6[
+```
+std::optional<int> empty = std::nullopt;
+EXPECT_FALSE(empty.has_value());
+EXPECT_THROW(empty.value(), std::bad_optional_access);
+*EXPECT_EQ(10, empty.value_or(10));
+int x = *empty; // undefined behavior
+
+
+std::optional<int> value = 123;
+EXPECT_TRUE(value.has_value());
+EXPECT_EQ(123, value.value());
+*EXPECT_EQ(123, value.value_or(10));
+EXPECT_EQ(123, *value);
+
+```
+]
+
+.col-6[
+]
+
+---
+
+.col-6[
+```
+std::optional<int> empty = std::nullopt;
+EXPECT_FALSE(empty.has_value());
+EXPECT_THROW(empty.value(), std::bad_optional_access);
+EXPECT_EQ(10, empty.value_or(10));
+*int x = *empty; // undefined behavior
+
+
+std::optional<int> value = 123;
+EXPECT_TRUE(value.has_value());
+EXPECT_EQ(123, value.value());
+EXPECT_EQ(123, value.value_or(10));
+*EXPECT_EQ(123, *value);
+
+```
+]
+
+.col-6[
+]
+
+---
+layout: false
+
+layout: true
+
+# `std::optional<T>`
+### in-place construction
+
+.row[
+.col-6[
+```
+struct Foo
+{
+    Foo(std::string s, int i);
+};
+
+```
+]
+]
+
+---
+
+.row[
+.col-6[
+```
+std::optional<Foo> opt{std::in_place, "Foo", 10};
+```
+]
+]
+
+---
+
+.row[
+.col-6[
+```
+std::optional<Foo> opt{std::in_place, "Foo", 10};
+*auto opt2 = std::make_optional<Foo>("Foo, 10");
+EXPECT_EQ(*opt1, *opt2);
+```
+
+]
+]
+
+---
+
+.row[
+.col-6[
+```
+std::optional<Foo> opt{std::in_place, "Foo", 10};
+*auto opt2 = std::make_optional<Foo>("Foo, 10");
+EXPECT_EQ(*opt1, *opt2);
+```
+]
+
+.col-6[
+```
+template <typename T, typename... Args>
+std::optional<T> make_optional(Args&&... args)
+{
+    return std::optional<T>(std::in_place, std::forward<Args>(args)...);
+}
+```
+]
+]
+
+---
+layout: false
+
+
+# `std::optional<T>`
+### Function argument use-case
+
+---
+
+layout: true
+
+.row[
+.col-6[
 ```
 int atoi(const char *str);
 
 ```
+]
+]
 
 --
 
+---
 
+.row[
+.col-6[
 ```
 auto x1 = atoi("123"); // x1 = 123
 auto x3 = atoi("123xxx"); // x3 = 123;
 auto x2 = atoi("0"); // x2 = 0
 auto x4 = atoi("xxx123"); // x4 = 0
 auto x5 = atoi(nullptr); // undefined behavior
-
 ```
+]
+]
 
 ---
+
+.row[
+.col-6[
+```
+auto x1 = atoi("123"); // x1 = 123
+auto x3 = atoi("123xxx"); // x3 = 123;
+*auto x2 = atoi("0"); // x2 = 0
+*auto x4 = atoi("xxx123"); // x4 = 0
+auto x5 = atoi(nullptr); // undefined behavior
+```
+]
+]
+
+
+
+.center[.emph[0 return value is ambigous.]]
+
+---
+layout: false
+
+
+class: middle, center
+
+What's the best way of returning parsing status along with the converted number?
+
+---
+layout: false
+
+layout: true
+
+### status as return value, result as output argument
+
+.row[
+.col-6[
 
 ```
 bool my_atoi(const char* str, int& val)
@@ -414,9 +861,15 @@ bool my_atoi(const char* str, int& val)
     return val;
 }
 ```
+]
+]
 
 --
 
+---
+
+.row[
+.col-6[
 ```
 int x = 0;
 if (my_atoi(str, x))
@@ -425,12 +878,61 @@ if (my_atoi(str, x))
 }
 
 ```
+]
+]
 
 --
-Requires declaring `x` before it can be initialized with the function output.
+
+.center[.emph[ Declaring `x` before it can be assigned in the function. ]]
 
 ---
 
+.row[
+.col-6[
+```
+*int x;
+if (my_atoi(str, x))
+{
+    //...
+}
+
+*int y = x;
+
+```
+]
+]
+
+--
+
+.center[.emph[ Common mistake: using unitialized value ]]
+
+---
+
+
+.row[
+.col-6[
+```
+if (int x = 0; my_atoi(str, x))
+{
+    //...
+}
+
+```
+]
+]
+
+.center[C++17 feature: initializer in `if statement` may be handy]
+
+
+---
+layout: false
+
+layout: true
+
+### result as return value, status as output argument
+
+.row[
+.col-6[
 ```
 int my_atoi(const char* str, bool& ok)
 {
@@ -443,9 +945,15 @@ int my_atoi(const char* str, bool& ok)
     return atoi(str);
 }
 ```
+]
+]
 
 --
 
+---
+
+.row[
+.col-6[
 ```
 bool ok = false;
 int x = my_atoi(str, ok);
@@ -453,14 +961,42 @@ if (ok)
 {
     //...
 }
-
 ```
+]
+]
 
 --
-Requires declaring `ok` before it can be initialized with the function output.
+
+.center[.emph[
+Declaring `ok` before it can be initialized with the function output.
+]]
 
 ---
 
+.row[
+.col-6[
+```
+bool ok = false;
+if (int x = my_atoi(ok); ok)
+{
+    //...
+}
+```
+]
+]
+
+
+.center[Use of `if statement` initializer]
+
+---
+layout: false
+
+layout: true
+
+### result & status as return value (`std::pair`)
+
+.row[
+.col-6[
 ```
 std::pair<bool, int> my_atoi(const char* str)
 {
@@ -471,8 +1007,15 @@ std::pair<bool, int> my_atoi(const char* str)
     return {true, atoi(str)};
 }
 ```
+]
+]
 
 --
+
+---
+
+.row[
+.col-6[
 ```
 auto ret = my_atoi(str);
 if (ret.first)
@@ -480,13 +1023,206 @@ if (ret.first)
     int x = ret.second;
 }
 ```
+]
+]
 
 --
-Immediate initialization with function output but a bit clumsy with the pair.
+.center[.emph[Need to remember what is first and what is second.]]
+
+---
+
+.row[
+.col-6[
+```
+if (auto ret = my_atoi(str); ret.first)
+{
+    int x = ret.second;
+}
+```
+]
+]
+
+.center[Use of `if statement` initializer]
 
 
 ---
 
+.row[
+.col-6[
+```
+auto [valid, value] = my_atoi(str);
+if (valid)
+{
+    int x = value;
+}
+```
+]
+]
+
+.center[C++17 structured binding]
+
+---
+layout: false
+
+
+layout: true
+
+## Structured binding
+
+.row[
+.col-6[
+```
+struct Foo
+{
+    int i;
+    std::string s;
+    double d;
+};
+
+Foo makeFoo(int i, std::string s, double d)
+{
+    return Foo{i, std::move(s), d};
+}
+```
+]]
+
+---
+
+.row[
+.col-6[
+```
+Foo foo = makeFoo(10, "foo", 0.5);
+auto i = foo.i;
+auto s = foo.s;
+auto d = foo.d;
+
+```
+]
+
+.col-6[
+- "traditional" way of "unpacking" a struct
+]
+
+]
+
+---
+
+.row[
+.col-6[
+```
+auto [i,s,d] = makeFoo(10, "foo", 0.5);
+```
+]
+
+.col-6[
+- structured binding directly assigning members of `Foo` to variables `i, s, d`
+]
+]
+
+---
+
+.row[
+.col-6[
+```
+Foo foo = makeFoo(10, "foo", 0.5);
+auto& [i,s,d] = foo;
+
+```
+]
+.col-6[
+- structured binding assigning references to members of `Foo`
+]
+]
+
+---
+
+.row[
+.col-6[
+```
+auto& [i,s,d] = makeFoo(10, "foo", 0.5);
+
+```
+]
+.col-6[
+- compiler error: cannot assign temporary variable to non-cost l-value reference
+]
+]
+
+---
+.row[
+.col-6[
+```
+const auto& [i,s,d] = makeFoo(10, "foo", 0.5);
+
+```
+]
+.col-6[
+- Okay: const reference extend the lifetime of the temporary
+]
+]
+
+---
+layout: false
+
+layout: true
+
+
+### result & status as return value (`std::pair`)
+
+.row[
+.col-6[
+```
+std::pair<bool, int> my_atoi(const char* str)
+{
+    if (str == nullptr || !std::isdigit(str[0]))
+    {
+        return {false, 0};
+    }
+    return {true, atoi(str)};
+}
+```
+]
+]
+
+---
+
+.row[
+.col-6[
+```
+auto [valid, value] = my_atoi(str);
+if (valid)
+{
+    int x = value;
+}
+```
+]
+]
+
+.center[C++17 structured binding]
+
+---
+
+.row[
+.col-6[
+```
+if (auto [valid, value] = my_atoi(str); valid)
+{
+    int x = value;
+}
+```
+]
+]
+
+.center[C++17 structured binding with `if statement` initializer]
+
+---
+layout: false
+
+
+### result & status as return value (`std::optional`)
+
+.row[
+.col-6[
 ```
 std::optional<int> my_atoi(const char* str)
 {
@@ -494,38 +1230,39 @@ std::optional<int> my_atoi(const char* str)
     return atoi(str);
 }
 ```
+]]
 
 --
 
+.row[
+.col-6[
 ```
-auto v = my_atoi(str);
-if (v)
+if (auto v = my_atoi(str); v)
 {
     auto value = *v;
 }
 
 ```
---
-
-```
-auto v = my_atoi(str);
-auto value = v.value_or(0);
-
-```
-
+]]
 
 --
 
+.row[
+.col-6[
 ```
-auto x1 = my_atoi("123"); // x1 = 123
-auto x3 = my_atoi("123xxx"); // x3 = 123;
-auto x2 = my_atoi("0"); // x2 = 0
-auto x4 = my_atoi("xxx123"); // x4 = nullopt
-auto x4 = my_atoi(nullptr); // x4 = nullopt
+auto x1 = my_atoi("123"); // *x1 = 123
+auto x3 = my_atoi("123xxx"); // *x3 = 123;
+*auto x2 = my_atoi("0"); // *x2 = 0
+*auto x4 = my_atoi("xxx123"); // x4 = nullopt
+auto x5 = my_atoi(nullptr); // x5 = nullopt
 
 ```
+]]
 
 ---
+
+.row[
+.col-6[
 ```
 int main(int argc, const char* argv[])
 {
@@ -538,8 +1275,25 @@ int main(int argc, const char* argv[])
     std::cout << x.value() << '\n';
 }
 ```
+]
+]
+
+.center[`std::optional` comes handy when parsing command line or files]
 
 ---
+class: middle
+
+`bool my_atoi(const char* s, int& i)`;
+
+`int my_atoi(const char* s, bool& valid)`;
+
+`std::pair<bool, int> my_atoi(const char* s)`;
+
+`std::optional<int> my_atoi(const char* s)`;
+
+---
+
+class: middle, center
 
 .note[
 Use `std::optional<T>` as a return type as an alternative to throwing exception when correct value cannot be returned.
@@ -563,7 +1317,7 @@ class: inverse
     "name"   : "power",
     "access" : "read-only",
     "type"   : "integer",
-    "range"  : {"min": -10, "max": 10}
+*   "range"  : {"min": -10, "max": 10}
 }
 ]
 
@@ -579,6 +1333,7 @@ struct Parameter
     std::string name;
     Access access;
     Type type;
+    // range ?
 };
 
 ```
@@ -616,6 +1371,32 @@ struct Parameter
 ]
 
 ---
+
+.col-7[
+```cpp
+struct Parameter
+{
+    std::string name;
+    Access access;
+    Type type;
+    std::optional<std::pair<int, int>> range;
+};
+
+```
+
+```
+void print(const Parameter& p)
+{
+    std::cout << "name=" << p.name << '\n'; 
+    std::cout << "access=" << p.access << '\n'; 
+    std::cout << "type=" << p.type << '\n'; 
+    if (auto range = p.range; range)
+        std::cout << "range=" << range->first << ","  << range.second << '\n';
+}
+```
+]
+
+---
 layout: false
 
 
@@ -630,8 +1411,12 @@ Many times we pass a result of a function to another function:
 
 ```
 Shape makeShape(std::vector<Points> points);
+
 Figure makeFigure(Shape shape);
-void paint(const Figure& figure);
+
+Painting paint(const Figure& figure);
+
+void display(const Painting& painting);
 
 ```
 ---
@@ -639,12 +1424,13 @@ void paint(const Figure& figure);
 ```
 Shape shape = makeShape({{1,2}, {3,3}, {1,0}});
 Figure figure = makeFigure(shape);
-paint(figure);
+Painting painting = paint(figure);
+display(painting);
 
 ```
 ---
 ```
-paint(makeFigure(makeShape({{1,2}, {3,3}, {1,0}})));
+display(paint(makeFigure(makeShape({{1,2}, {3,3}, {1,0}}))));
 ```
 
 ---
@@ -657,8 +1443,12 @@ class: inverse
 
 ```
 std::optional<Shape> makeShape(std::vector<Points> points);
+
 std::optional<Figure> makeFigure(Shape shape);
-void paint(const Figure& figure);
+
+std::optional<Painting> paint(const Figure& figure);
+
+void display(const Painting& painting);
 
 ```
 
@@ -667,13 +1457,17 @@ void paint(const Figure& figure);
 --
 
 ```
-auto shape = makeShape({{1,2}, {3,3}, {1,0}});
+*auto shape = makeShape({{1,2}, {3,3}, {1,0}});
 if (shape)
 {
-    auto figure = makeFigure(*shape);
+*   auto figure = makeFigure(*shape);
     if(figure)
     {
-        paint(*figure);
+*       auto painting = paint(*figure);
+        if (painting)
+        {
+*           display(painting);
+        }
     }
 
 }
@@ -682,44 +1476,53 @@ if (shape)
 
 --
 
-"Noisy code" due to error checking.
+.center[.emph["Noisy code" due to error checking.]]
 
 ---
 
 
 ```
-auto shape = makeShape({{1,2}, {3,3}, {1,0}});
+*auto shape = makeShape({{1,2}, {3,3}, {1,0}});
 
 if (!shape)
 {
     return;
 }
 
-auto figure = makeFigure(*shape);
+*auto figure = makeFigure(*shape);
 
 if(!figure)
 {
     return;
 }
 
-paint(*figure);
+*auto painting = paint(*figure);
+if (!painting)
+{
+    return;
+}
+
+*display(*painting);
 
 ```
 
---
-
-Still noisy...
+.center[.emph["Noisy code" due to error checking.]]
 
 ---
 
 ```
-auto shape = makeShape({{1,2}, {3,3}, {1,0}});
-auto figure = bind(shape, makeFigure);
-bind(figure, paint);
+auto shape    = makeShape({{1,2}, {3,3}, {1,0}});
+auto figure   = bind(shape, makeFigure);
+auto painting = bind(figure, paint);
+
+if (painting)
+{
+    display(*painting);
+}
 ```
 
 --
-What does the function `bind` do ?
+.center[What does the function `bind` do ?]
 
 ---
 layout: false
@@ -730,7 +1533,7 @@ class: inverse
 
 ```
 template <typename T, typename F>
-auto bind(const std::optional<T>& opt, F&& f) -> std::result_of_t<F(T)>
+auto bind(const std::optional<T>& opt, F&& f) -> std::invoke_result_t<F, T>
 {
     if (opt.has_value())
     {
@@ -747,6 +1550,7 @@ auto bind(const std::optional<T>& opt, F&& f) -> std::result_of_t<F(T)>
 ```
 auto shape = makeShape({{1,2}, {3,3}, {1,0}});
 *auto figure = bind(shape, makeFigure);
+auto painting = bind(figure, paint);
 ```
 ---
 
@@ -754,68 +1558,34 @@ auto shape = makeShape({{1,2}, {3,3}, {1,0}});
 ```
 auto shape = makeShape({{1,2}, {3,3}, {1,0}});
 auto figure = bind(shape, makeFigure);
-*bind(figure, paint);
+*auto painting = bind(figure, paint);
 ```
-
---
-
-```bash
-
- error: void function 'bind' should not return a value [-Wreturn-type]
-    return std::nullopt;
-    ^      ~~~~~~~~~~~~
- note: in instantiation of function template specialization 'bind<Figure, void (&)(const Figure &)>' requested here
-    bind(f, paint);
-           ^
-
-```
-
---
-
-```
-void paint(const Figure& figure);
-```
-
-`paint` does not return anything but `bind` tries to return `std::nullopt`
 
 ---
 layout: false
 
-```
-template <typename T, typename F>
-auto bind(const std::optional<T>& opt, F&& f) -> std::result_of_t<F(T)>
-{
-    if (opt.has_value())
-    {
-        return f(*opt);
-    }
-
-    using Ret = std::result_of_t<F(T)>;
-
-    if constexpr (std::is_same_v<void, RetF>)
-    {
-        return;
-    }
-    else
-    {
-        return std::nullopt;
-    }
-}
-
-```
-
---
-```
-auto shape = makeShape({{1,2}, {3,3}, {1,0}});
-auto figure = bind(shape, makeFigure);
-bind(figure, paint);
-```
-
----
 
 class: chapter
 
 ## `std::variant<Ts...>`
+
+---
+
+## `std::variant<Ts...>`
+
+- container which can be empty or hold a single value of one of the types `Ts`
+
+--
+
+- is type safe: aware of type it is holding
+
+--
+
+- can store any type
+
+--
+
+- no heap allocation
 
 ---
 
@@ -855,6 +1625,12 @@ Variant var = 0.5;
 - any types
 - aware of the type it is holding
 ]
+]
+
+--
+.row[
+.col-6[.center[.text-red[Type **un**safe]]]
+.col-6[.center[.text-green[Type safe]]]
 ]
 
 ---
@@ -958,8 +1734,9 @@ EXPECT_EQ("string in variant", *std::get_if<std::string>(var));
 layout: false
 
 .col-6[
+.small[
 - Default type is the first type specified.
-]
+]]
 
 .col-6[
 ```
@@ -980,9 +1757,11 @@ std::variant<Foo, Bar> v; // v contains type Foo
 ---
 
 .col-6[
-- Default type is the first type specified.
+.small[
+.greyout[
+- Default type is the first type specified.]
 - The first type must be *default constructible*
-]
+]]
 
 .col-6[
 ```
@@ -1003,9 +1782,13 @@ std::variant<Foo, Bar> v; // compiler error
 ---
 
 .col-6[
+.small[
+.greyout[
 - Default type is the first type specified.
-- The first type must be *default constructible*
+
+- The first type must be *default constructible*]
 - `std::monostate` can be used if none of the types have default constructor
+]
 ]
 
 .col-6[
@@ -1083,6 +1866,9 @@ std::visit(print{}, v);
 ```
 
 ---
+
+class: center
+
 <img src="resources/impedance.png" alt="drawing" width="200"/>
 
 Calculate the impedance of the circuit for any combination of the R, L, C elements.
@@ -1092,7 +1878,7 @@ Calculate the impedance of the circuit for any combination of the R, L, C elemen
 ---
 
 .col-6[
-<img src="resources/impedance_uml.png" alt="drawing" width="400"/>
+<img src="resources/impedance_uml.png" alt="drawing" width="400", align="center"/>
 ]
 
 .col-6[
@@ -1146,7 +1932,6 @@ public:
 ---
 
 .col-6[
-<img src="resources/impedance.png" alt="drawing" width="200"/>
 
 ```
 std::complex<double>
@@ -1215,7 +2000,6 @@ public:
 ---
 
 .col-6[
-<img src="resources/impedance.png" alt="drawing" width="200"/>
 
 ```
 std::complex<double>
@@ -1224,9 +2008,9 @@ circuit_impedance(const Element& E1,
                   const Element& E3, 
                   double freq)
 {
-    auto Z1 = nonstd::visit(impedance{freq}, E1);
-    auto Z2 = nonstd::visit(impedance{freq}, E2);
-    auto Z3 = nonstd::visit(impedance{freq}, E3);
+    auto Z1 = std::visit(impedance{freq}, E1);
+    auto Z2 = std::visit(impedance{freq}, E2);
+    auto Z3 = std::visit(impedance{freq}, E3);
     auto Z  = 1.0 / (1.0 / Z1 + 1.0 / (Z2 + Z3));
     return Z;
 }
@@ -1250,7 +2034,7 @@ struct Inductor
     double mValue;
 };
 
-using Element = nonstd::variant<Resistor, Capacitor, Inductor>;
+using Element = std::variant<Resistor, Capacitor, Inductor>;
 
 ```
 
@@ -1278,18 +2062,23 @@ struct impedance
 ]
 
 ---
+class: chapter
+
+## `std::any`
+
+---
 
 # `std::any`
 
 
 - single value container
-- keeps type information
+- type safe: keeps type information
 - can hold an arbitrary type
 - implementations should use Small Buffer Optimization technique to avoid heap allocation for small types
 
 --
 
-Essentially, `std::any` is a type-safe replacement of `void*`
+.center[.note[Essentially, `std::any` is a type-safe replacement of `void*`]]
 
 ---
 ```
@@ -1450,7 +2239,6 @@ EXPECT_EQ(a1, a2);
 
 .col-6[
 
-Type un-safe
 
 ```
 struct DatabaseRecord
@@ -1482,16 +2270,16 @@ foo.doFoo();
 ```
 auto it = std::find(database.begin(), database.end(), "rec1");
 Bar* bar = static_cast<Bar*>(it->userData);
-bar.doBar(); // undefined behavior
+*bar.doBar(); // undefined behavior
 
 ```
+
+.center[.text-red[Type **un**safe]]
 ]
 
 --
 
 .col-6[
-
-Type safe
 
 ```
 struct DatabaseRecord
@@ -1532,11 +2320,14 @@ else
     // error
 
 ```
+
+.center[.text-green[Type safe]]
 ]
 
 ---
 
-## Small Buffer Optimization
+## `std::any`
+### Small Buffer Optimization
 
 - All known Standard Library implementations employ Small Buffer Optimization technique
 - For 'small objects' objects stored in side `std::any` there's no heap allocation
@@ -1607,9 +2398,8 @@ Constructing Small
 ]
 
 ---
+class: middle, center
 
-
-## Small Buffer Optimization
 
 How it works?
 
@@ -2050,8 +2840,7 @@ struct LargeTypeHandler
 };
 ```
 
-Dynamic allocation.
-
+.center[Dynamic allocation]
 ]
 
 .col-6[
@@ -2080,7 +2869,7 @@ struct SmallTypeHandler
 ```
 ]
 
-Constructing object in the existing buffer using placement `new`.
+.center[Constructing object in the existing buffer using placement `new`]
 
 ---
 
@@ -2107,7 +2896,7 @@ struct LargeTypeHandler
 };
 ```
 
-Releasing allocated heap memory;
+.center[Releasing allocated heap memory]
 
 ]
 
@@ -2137,7 +2926,7 @@ struct SmallTypeHandler
 };
 ```
 
-Just calling the desctructor.
+.center[Just calling the desctructor]
 ]
 
 
@@ -2213,19 +3002,19 @@ public:
     template <typename T>
     any(T&& value) 
     {
-*        using HandlerType = std::condtional_t<sizeof(T) > (sizeof(void*), 
-*                                              LargeTypeHandler<T>, 
-*                                              SmallTypeHandler<T>>;
-*        HandlerType::create(*this, std::forward<T>(value));
+*        using HandlerType = std::condtional_t<sizeof(T) <= sizeof(void*), 
+*                                              SmallTypeHandler<T>, 
+*                                              LargeTypeHandler<T>>;
+         HandlerType::create(*this, std::forward<T>(value));
     }
 
 private:
-*    union Storage
-*    {
-*        void* ptr = nullptr;
-*        std::array<std::byte, sizeof(void*)> buffer;
-*    }
-*    Storage mStorage;
+     union Storage
+     {
+         void* ptr = nullptr;
+         std::array<std::byte, sizeof(void*)> buffer;
+     }
+     Storage mStorage;
     
     /* Type information */
     using HandleFuncPtr =  void* (*)(Action, any const *, 
@@ -2239,11 +3028,11 @@ private:
 
 
 .col-6[
-
+.small[
 - Static buffer implementation is selected if `sizeof(T) <= sizeof(void*)`
 - Dynamic heap allocation is selected otherwise
 
-]
+]]
 
 ---
 
@@ -2277,6 +3066,7 @@ Constructing Small
 ]
 
 ---
+## Small Buffer Optimization
 
 .row[
 .col-6[
@@ -2285,7 +3075,7 @@ struct Small
 {
     Small() { std::cout << "Constructing Small\n"; }
 
-*   Small(const Small& other) = default;
+    Small(const Small& other) = default;
     
 *   Small(Small&& other) {b[0] = other.b[0];}
     
@@ -2318,6 +3108,7 @@ Allocating Small
 ]
 
 ---
+## Small Buffer Optimization
 
 .row[
 .col-6[
@@ -2326,7 +3117,7 @@ struct Small
 {
     Small() { std::cout << "Constructing Small\n"; }
 
-*   Small(const Small& other) = default;
+    Small(const Small& other) = default;
     
 *   Small(Small&& other) {b[0] = other.b[0];}
     
@@ -2347,11 +3138,14 @@ int main()
 ]
 
 .col-6[
+.small[
 > Implementations are encouraged to avoid dynamic allocations for small objects, 
 > but such an optimization may only be applied to types for which 
 > std::is_nothrow_move_constructible returns true.
-]
 
+*https://en.cppreference.com/w/cpp/utility/any* 
+]
+]
 ]
 
 .row[
@@ -2364,6 +3158,7 @@ Allocating Small
 ]
 
 ---
+## Small Buffer Optimization
 
 .row[
 .col-6[
@@ -2393,9 +3188,10 @@ int main()
 ]
 
 .col-6[
+.small[
 `noexcept` keyword insures that the function does not throw.
 ]
-
+]
 ]
 
 --
@@ -2408,7 +3204,8 @@ Constructing Small
 ]
 ]
 
---
+---
+
 .row[
 .col-6[
 ```
@@ -2421,34 +3218,183 @@ public:
 ]
 
 .col-6[
+.small[
 - move constructor of `std::any` must gurantee not to throw
 - if type's T move constructror may throw `std::any` cannot call it not to violate the noexcept gurantee
 - in such case it will resort to heap allocation even for small types
 ]
-
 ]
----
+]
 
-.col-6[
+---
+.col-8[
 ```
 class any
 {
 public:
-*    any(any&& other) noexcept {/*...*/}
+    /*...*/
+
+    template <typename T>
+    any(T&& value) 
+    {
+        using HandlerType = std::condtional_t<sizeof(T) <= sizeof(void*) && 
+*                                                std::is_nothrow_move_constructible_t<T>, 
+                                              SmallTypeHandler<T>, 
+                                              LargeTypeHandler<T>>;
+         HandlerType::create(*this, std::forward<T>(value));
+    }
+
+private:
+    /*...*/
 };
+    
 ```
 ]
 
-.col-6[
+---
+
+class: middle, center
+
 ... but why is `std::any` move constructor `noexcept` in the first place ?
+
+---
+
+.col-6[
+```
+struct Buffer
+{   
+    Buffer(size_t s) : data{new int[s]}, size{s} {}
+
+    Buffer(const Buffer& other)
+    {
+        data.reset(new int[other.size]);
+        size = other.size;
+        std::copy(other.data.get(), other.data.get() + other.size, 
+                  data.get());
+    }
+
+    Buffer(Buffer&& other)
+    {
+        data.swap(other.data);
+        size = other.size;
+    }
+
+    std::unique_ptr<int[]> data;
+    size_t size;
+};
+```
+
+```
+std::vector<Buffer> vec;
+vec.reserve(10);
+for (auto i = 1; i <= 15; i++)
+{
+    vec.push_back(Buffer{100000000});
+}
+```
+]
+
+--
+.col-6[
+<img src="resources/move_without_noexcept.jpeg" alt="drawing" width="450"/>
+]
+
+---
+
+##Strong Exception Guarantee
+
+During re-allocation `std::vector` uses `move_if_no_except` function to move
+elements from the old to the new memory location.
+If the move constructor has no noexcept qualifier it will resort to copy.
+
+---
+## Strong Exception Guarantee
+
+- The Standard requires that the `std::vector`'s' re-allocating operations (e.g. `push_back`) 
+  must meet the Strong Exception Guarantee
+- Should an exception is thrown during re-allocation the state of the `vector` from before
+  the operation must be restored
+
+--
+
+.col-6[
+<img src="resources/vector_realloc_copy.png" alt="drawing" width="450"/>
+
+.small[
+- The source location remains intact until the last element is copied
+- In case of exception the `vector` simply discards the destination region
+  and keeps the source region
+]
+]
+
+
+--
+
+.col-6[
+<img src="resources/vector_realloc_move.png" alt="drawing" width="450"/>
+
+.small[
+- The source location remains intact until the last element is copied
+- In case of exception the `vector` simply discards the destination region
+  and keeps the source region
+]
+]
+
+---
+
+class: middle, center
+
+`std::vector` will use move during relocation only if type's T move constructor guarantees
+not to throw.
+
+---
+
+.col-6[
+```
+struct Buffer
+{   
+    Buffer(size_t s) : data{new int[s]}, size{s} {}
+
+    Buffer(const Buffer& other)
+    {
+        data.reset(new int[other.size]);
+        size = other.size;
+        std::copy(other.data.get(), other.data.get() + other.size, 
+                  data.get());
+    }
+
+*   Buffer(Buffer&& other) noexcept
+    {
+        data.swap(other.data);
+        size = other.size;
+    }
+
+    std::unique_ptr<int[]> data;
+    size_t size;
+};
+```
+
+```
+std::vector<Buffer> vec;
+vec.reserve(10);
+for (auto i = 1; i <= 15; i++)
+{
+    vec.push_back(Buffer{100000000});
+}
+```
+]
+
+--
+.col-6[
+<img src="resources/move_with_noexcept.jpeg" alt="drawing" width="450"/>
 ]
 
 ---
 
 
+
 # Class template parameter deduction
 
-<!-- end class template parameter deduction -->
 
 ---
 
@@ -2599,7 +3545,6 @@ void f(const std::array<char, 100>& x)
 Size of x is **100** bytes.
 
 
-<!-- begin fold_expression -->
 
 ---
 
@@ -2717,11 +3662,17 @@ auto v4 = subset(v, And<int>(greaterThan5, lessThan20, even);
 
 ```
 --
-This is more readable and explanatory than lamba syntax.
+.center[This is more readable and explanatory than lamba syntax.]
+
 
 ---
 layout: false
 
+class: middle, center
+
+What is `And<int>()` ?
+
+---
 
 .row[
 .col-6[
@@ -2742,9 +3693,6 @@ struct and_
     }
 };
 ```
-]]
-
---
 
 ```
 bool test = and_::apply(8, greaterThan5, lessThan20, even)
@@ -2752,8 +3700,8 @@ EXPECT_TRUE(test);
 
 test = and_::apply(9, greaterThan5, lessThan20, even)
 EXPECT_FALSE(test);
-
 ```
+]]
 
 ---
 
@@ -2775,6 +3723,14 @@ struct and_
         return true;
     }
 };
+```
+
+```
+bool test = and_::apply(8, greaterThan5, lessThan20, even)
+EXPECT_TRUE(test);
+
+test = and_::apply(9, greaterThan5, lessThan20, even)
+EXPECT_FALSE(test);
 ```
 ]
 .col-6[
@@ -2786,14 +3742,16 @@ struct and_
                              decltype(lessThan20) pred2,
                              decltype(even) pred3)
     {
-        return pred1(std::forward<T>(t)) && apply(pred2, pred3);
+        return pred1(std::forward<T>(t)) && 
+                     apply(std::forward<T>(t), pred2, pred3);
     }
 
     template <typename T>
     static bool apply(T&& t, decltype(lessThan20) pred2,
                              decltype(even) pred3)
     {
-        return pred2(std::forward<T>(t)) && apply(pred3);
+        return pred2(std::forward<T>(t)) && 
+               apply(std::forward<T>(t), pred3);
     }
 
     template <typename T>
@@ -2822,7 +3780,7 @@ struct and_
     template <typename T, typename Predicate, typename... Predicates>
     static bool apply(T&& t, Predicate&& pred, Predicates&&... preds)
     {
-        return pred(std::forward<T>(t) && apply(std::forward<T>(t),
+        return pred(std::forward<T>(t)) && apply(std::forward<T>(t),
                                      std::forward<Predicates>(preds)...);
     }
 
@@ -2832,6 +3790,13 @@ struct and_
         return true;
     }
 };
+```
+```
+bool test = and_::apply(8, greaterThan5, lessThan20, even)
+EXPECT_TRUE(test);
+
+test = and_::apply(9, greaterThan5, lessThan20, even)
+EXPECT_FALSE(test);
 ```
 ]
 .col-6[
@@ -2845,7 +3810,7 @@ struct and_
     {
         return pred1(std::forward<T>(t)) &&
                pred2(std::forward<T>(t)) &&
-               apply(pred3);
+               apply(std::forward<T>(t), pred3);
     }
 
     template <typename T>
@@ -2874,7 +3839,7 @@ struct and_
     template <typename T, typename Predicate, typename... Predicates>
     static bool apply(T&& t, Predicate&& pred, Predicates&&... preds)
     {
-        return pred(std::forward<T>(t) && apply(std::forward<T>(t),
+        return pred(std::forward<T>(t)) && apply(std::forward<T>(t),
                                      std::forward<Predicates>(preds)...);
     }
 
@@ -2885,6 +3850,15 @@ struct and_
     }
 };
 ```
+```
+bool test = and_::apply(8, greaterThan5, lessThan20, even)
+EXPECT_TRUE(test);
+
+test = and_::apply(9, greaterThan5, lessThan20, even)
+EXPECT_FALSE(test);
+```
+
+
 ]
 .col-6[
 ```
@@ -2911,53 +3885,7 @@ struct and_
 ]
 
 ---
-
-```
-struct and_
-{
-    template <typename T, typename Predicate, typename... Predicates>
-    static bool apply(T&& t, Predicate&& pred, Predicates&&... preds)
-    {
-        return pred(std::forward<T>(t) && apply(std::forward<T>(t),
-                                     std::forward<Predicates>(preds)...);
-    }
-
-    template <typename T>
-    static bool apply(T&& t)
-    {
-        return true;
-    }
-};
-```
-
-```
-template <class T>
-struct And
-{
-    std::function<bool(const T&)> f;
-
-    template <class... Ts>
-    And(Ts... ts)
-    {
-        f = [&ts...](const T& t) { return and_::apply(t, std::forward<Ts>(ts)...); };
-    }
-
-    bool operator()(const T& v) const
-    {
-        return f(v);
-    }
-};
-```
-
-```
-bool test = And{greaterThan5, lessThan20, even}(8);
-EXPECT_TRUE(test);
-
-```
-
----
 layout: true
-class: inverse
 
 ---
 
@@ -2967,7 +3895,7 @@ struct and_
     template <typename T, typename Predicate, typename... Predicates>
     static bool apply(T&& t, Predicate&& pred, Predicates&&... preds)
     {
-        return pred(std::forward<T>(t) && apply(std::forward<T>(t),
+        return pred(std::forward<T>(t)) && apply(std::forward<T>(t),
                                      std::forward<Predicates>(preds)...);
     }
 
@@ -2978,8 +3906,9 @@ struct and_
     }
 };
 ```
-
-Standard C++11 way of "unpacking" variadic pack - use function overloading.
+.center[
+*'Classic'* C++11 way of "unpacking" variadic pack - use function overloading.
+]
 
 ---
 
@@ -2990,13 +3919,14 @@ struct and_
     static bool apply(T&& t, Predicates&&... preds)
     {
         bool b  = true;
-        int _[] = {0, b = b && preds(std::forward<T>(t))...};
+        int _[] = {b = b && preds(std::forward<T>(t))...};
         return b;
     }
 };
 ```
-
+.center[
 Nice but a cryptic trick to avoid defining 2 overloads.
+]
 
 ---
 
@@ -3012,11 +3942,51 @@ struct and_
 
 ```
 
-C++17 *fold expression*.
+.center[C++17 *fold expression*]
 
 ---
 layout: false
 
+
+```
+struct and_
+{
+    template <typename T, typename... Predicates>
+    static bool apply(T&& t, Predicates&&... preds)
+    {
+        return (... && preds(std::forward<T>(t)));
+    }
+};
+
+```
+
+```
+template <class T>
+struct And
+{
+    std::function<bool(const T&)> f;
+
+    template <class... Ts>
+    And(Ts... ts)
+    {
+        f = [&ts...](const T& t) { 
+            return and_::apply(t, std::forward<Ts>(ts)...); };
+    }
+
+    bool operator()(const T& v) const
+    {
+        return f(v);
+    }
+};
+```
+
+```
+bool test = And<int>{greaterThan5, lessThan20, even}(8);
+EXPECT_TRUE(test);
+
+```
+
+---
 
 .col-6[
 ```
@@ -3152,13 +4122,241 @@ using Or = Operation<T, v2::or_>;
 ```
 auto v2 = subset(v, And<int>(greaterThan5, Or<int>(even, lessThan20)));
 ```
+--
+
+```
+auto v2 = subset(v, Or<int>(greaterThan5, even));
+```
 
 ---
 
+.row[
+.col-6[
+```
+struct Automobile
+{
+    std::string make;
+    std::string model:
+    int year;
+    int horsepower;
+};
+
+std::vector<Automobile> automobiles;
+```
+]
+]
+
+--
+
+.row[
+.col-6[
+```
+struct WithMake
+{
+    std::string_view make;
+
+    bool operator(const Automobile& a)
+    {
+        return a.make == make;
+    }
+};
+```
+]
+
+.col-6[
+```
+struct WithYearBetween
+{
+    int from;
+    int to;
+
+    bool operator(const Automobile& a)
+    {
+        return a.year >= from && a.year <= to;
+    }
+};
+```
+]
+]
 
 
+.row[
+```
+auto oldNissans = subset(automobiles, And<Automobile>(WithMake{"Nissan"}, WithYearBetween(1990, 1995)));
+```
+]
 
-<!-- end fold_expression -->
+---
+## `decltype`
+
+.row[
+.col-6[
+
+```
+int i = 10;
+using T = decltype(i);
+```
+
+]
+.col-6[
+- `T` is `int`
+]
+]
+
+.row[
+.col-6[
+
+```
+int i = 10;
+using T = decltype(i+20);
+```
+
+]
+.col-6[
+- `T` is `int`
+]
+]
+
+.row[
+.col-6[
+
+```
+int i = 10;
+using T = decltype(i==10);
+```
+
+]
+.col-6[
+- `T` is `bool`
+]
+]
+
+.row[
+.col-6[
+
+```
+std::map<int, string> m;
+using T = decltype(m);
+```
+
+]
+.col-6[
+- `T` is `std::map<int, string>`
+]
+]
+
+.row[
+.col-6[
+
+```
+std::map<int, string> m;
+using T = decltype(m)::key_type;
+```
+
+]
+.col-6[
+- `T` is `int`
+]
+]
+
+---
+## `decltype`
+
+.row[
+.col-6[
+
+```
+struct Foo
+{
+    std::string toString() const;
+};
+
+using T = decltype(Foo().toString());
+```
+
+]
+.col-6[
+- `T` is `std::string`
+]
+]
+
+.row[
+.col-6[
+
+```
+struct Foo
+{
+    Foo(int i);
+    std::string toString() const;
+};
+
+using T = decltype(Foo().toString());
+```
+
+]
+.col-6[
+- compiler error
+]
+]
+
+---
+## `decltype`
+
+.row[
+.col-6[
+
+```
+struct Foo
+{
+    std::string toString() const;
+};
+
+using T = decltype(Foo().toString());
+```
+
+]
+.col-6[
+- `T` is `std::string`
+]
+]
+
+.row[
+.col-6[
+
+```
+struct Foo
+{   
+    Foo(int i);
+    std::string toString() const;
+};
+
+using T = decltype(Foo(10).toString());
+```
+
+]
+.col-6[
+- `T` is `std::string`
+]
+]
+
+.row[
+.col-6[
+
+```
+struct Foo
+{
+    Foo(int i);
+    std::string toString() const;
+};
+
+using T = decltype(std::declval<Foo>().toString());
+```
+
+]
+.col-6[
+- `T` is `std::string`
+]
+]
 
 ---
 
@@ -3294,7 +4492,6 @@ void f(T t, typename std::enable_if<!std::is_floating_point<T>::value>::type* p 
 ---
 layout: false
 
-<!-- begin constexpr -->
 
 .row[
 ```
@@ -3443,7 +4640,7 @@ void copy_n(InputIt first, size_t n, OutputIt dest_first,
 layout: false
 
 
-`std::enable_if` is a very power tool but:
+`std::enable_if` is a powerful tool but:
 - it is not easy or intuitive to use
 - the code is very noisy and not easly digestable
 - many conditions on types leads to explosion of number of function overloads
@@ -3526,6 +4723,626 @@ copy_n(v1.begin(), 1, std::back_inserter(v2));
 ```
 ---
 
+.col-6[
+```
+template <typename T>
+void print(const T& t)
+{
+    if (std::is_same_v<T, std::string>)
+    {
+        std::cout << "This is a string: " << t << '\n';
+    }
+    else
+    {
+        std::cout << "This is not a string: " << t << '\n';
+    }
+}
+
+print(std::string{"Master Yoda"});
+print(120);
+```
+
+```bash
+This is a string: Master Yoda
+This is not a string: 120
+```
+
+]
+
+---
+
+.col-6[
+```
+template <typename T>
+void print(const T& t)
+{
+    if (std::is_same_v<T, std::string>)
+    {
+        std::cout << "This is a string: " << t << '\n';
+    }
+    else
+    {
+        std::cout << "This is not a string: " << t << '\n';
+    }
+}
+
+print(std::string{"Master Yoda"});
+print(120);
+```
+
+```bash
+This is a string: Master Yoda
+This is not a string: 120
+```
+
+]
+
+.col-6[
+```
+template <typename T>
+void print(const T& t)
+{
+*   if constexpr (std::is_same_v<T, std::string>)
+    {
+        std::cout << "This is a string: " << t << '\n';
+    }
+    else
+    {
+        std::cout << "This is not a string: " << t << '\n';
+    }
+}
+
+print(std::string{"Master Yoda"});
+print(120);
+```
+
+```bash
+This is a string: Master Yoda
+This is not a string: 120
+```
+]
+
+---
+layout: true
+
+## What the compiler generates?
+
+.col-6[
+```
+template <typename T>
+void print(const T& t)
+{
+    if (std::is_same_v<T, std::string>)
+    {
+        std::cout << "This is a string: " << t << '\n';
+    }
+    else
+    {
+        std::cout << "This is not a string: " << t << '\n';
+    }
+}
+
+print(std::string{"Master Yoda"});
+print(120);
+```
+]
+
+---
+
+.col-6[
+```
+void print(const std::string& t)
+{
+    if (std::is_same_v<std::string, std::string>)
+    {
+        std::cout << "This is a string: " << t << '\n';
+    }
+    else
+    {
+        std::cout << "This is not a string: " << t << '\n';
+    }
+}
+
+void print(const int& t)
+{
+    if (std::is_same_v<int, std::string>)
+    {
+        std::cout << "This is a string: " << t << '\n';
+    }
+    else
+    {
+        std::cout << "This is not a string: " << t << '\n';
+    }
+}
+```
+]
+
+---
+
+.col-6[
+```
+void print(const std::string& t)
+{
+    if (std::is_same_v<std::string, std::string>)
+    {
+        std::cout << "This is a string: " << t << '\n';
+    }
+    else
+    {
+*       std::cout << "This is not a string: " << t << '\n';
+    }
+}
+
+void print(const int& t)
+{
+    if (std::is_same_v<int, std::string>)
+    {
+*       std::cout << "This is a string: " << t << '\n';
+    }
+    else
+    {
+        std::cout << "This is not a string: " << t << '\n';
+    }
+}
+```
+]
+.col-6[
+- Compiler generates two same function bodies just substituting the type
+- if/else branches result in dead code
+]
+
+---
+layout:false
+
+layout: true
+
+## What the compiler generates?
+
+.col-6[
+```
+template <typename T>
+void print(const T& t)
+{
+    if constexpr (std::is_same_v<T, std::string>)
+    {
+        std::cout << "This is a string: " << t << '\n';
+    }
+    else
+    {
+        std::cout << "This is not a string: " << t << '\n';
+    }
+}
+
+print(std::string{"Master Yoda"});
+print(120);
+```
+]
+
+---
+
+.col-6[
+```
+void print(const std::string& t)
+{
+    std::cout << "This is a string: " << t << '\n';
+}
+
+void print(const int& t)
+{
+    std::cout << "This is not a string: " << t << '\n';
+}
+```
+]
+
+---
+
+.col-6[
+```
+void print(const std::string& t)
+{
+    std::cout << "This is a string: " << t << '\n';
+}
+
+void print(const int& t)
+{
+    std::cout << "This is not a string: " << t << '\n';
+}
+```
+]
+.col-6[
+- Compiler generates two different function bodies which `if` or `else` branch
+  applicable to the substituted type
+- No dead code
+]
+
+---
+layout:false
+
+layout: true
+
+## What the compiler generates?
+
+.col-6[
+```
+template <typename T>
+void print(const T& t)
+{
+    if (std::is_same_v<T, std::string>)
+    {
+        std::cout << "This is a string: " << t 
+                  << " (length=" << t.length() << < ")" << '\n';
+    }
+    else
+    {
+        std::cout << "This is not a string: " << t << '\n';
+    }
+}
+
+print(std::string{"Master Yoda"});
+print(120);
+```
+]
+
+---
+
+.col-6[
+```
+void print(const std::string& t)
+{
+    if (std::is_same_v<std::string, std::string>)
+    {
+        std::cout << "This is a string: " << t 
+                  << " (length=" << t.length() << < ")" << '\n';
+    }
+    else
+    {
+        std::cout << "This is not a string: " << t << '\n';
+    }
+}
+
+void print(const int& t)
+{
+    if (std::is_same_v<int, std::string>)
+    {
+        std::cout << "This is a string: " << t 
+                  << " (length=" << t.length() << < ")" << '\n';
+    }
+    else
+    {
+        std::cout << "This is not a string: " << t << '\n';
+    }
+}
+```
+]
+
+---
+
+.col-6[
+```
+void print(const std::string& t)
+{
+    if (std::is_same_v<std::string, std::string>)
+    {
+        std::cout << "This is a string: " << t 
+                  << " (length=" << t.length() << < ")" << '\n';
+    }
+    else
+    {
+        std::cout << "This is not a string: " << t << '\n';
+    }
+}
+
+void print(const int& t)
+{
+    if (std::is_same_v<int, std::string>)
+    {
+*       std::cout << "This is a string: " << t 
+*                 << " (length=" << t.length() << < ")" << '\n';
+    }
+    else
+    {
+        std::cout << "This is not a string: " << t << '\n';
+    }
+}
+```
+]
+.col-6[
+- Compiler error: int does not have method `length()`
+]
+
+---
+layout:false
+
+layout: true
+
+## What the compiler generates?
+
+.col-6[
+```
+template <typename T>
+void print(const T& t)
+{
+    if constexpr (std::is_same_v<T, std::string>)
+    {
+        std::cout << "This is a string: " << t 
+                  << " (length=" << t.length() << < ")" << '\n';
+    }
+    else
+    {
+        std::cout << "This is not a string: " << t << '\n';
+    }
+}
+
+print(std::string{"Master Yoda"});
+print(120);
+```
+]
+
+---
+
+.col-6[
+```
+void print(const std::string& t)
+{
+    std::cout << "This is a string: " << t 
+              << " (length=" << t.length() << < ")" << '\n';
+}
+
+void print(const int& t)
+{
+    std::cout << "This is not a string: " << t << '\n';
+}
+```
+]
+
+---
+
+.col-6[
+```
+void print(const std::string& t)
+{
+    std::cout << "This is a string: " << t 
+              << " (length=" << t.length() << < ")" << '\n';
+}
+
+void print(const int& t)
+{
+    std::cout << "This is not a string: " << t << '\n';
+}
+```
+]
+.col-6[
+- Compiles correctly because call to `length()` in only generated in the function
+  with `string` substitution.
+]
+
+---
+layout:false
+
+## Return type deduction
+
+- C++14 standard introduced return type deduction
+```
+auto abs(int x)
+{
+    return x < 0 ? -x : x;
+}
+```
+--
+- This feature should not be overused because it may make the code less readable
+
+--
+
+- However, combined with `if constexpr` it brings additional capabilities to generic programming
+
+---
+
+layout: true
+
+## What the compiler generates?
+
+.col-6[
+```
+struct Foo{};
+struct Bar{};
+
+template <typename T>
+auto makeFooOrBar(const T& t)
+{
+    if (std::is_same_v<T, std::string>)
+    {
+        return Foo{};
+    }
+    else
+    {
+        return Bar{};
+    }
+}
+
+auto fooOrBar1 = makeFooOrBar("Foo or Bar");
+auto fooOrBar2 = makeFooOrBar(120);
+```
+]
+
+---
+
+--
+
+.col-6[
+```
+auto makeFooOrBar(const std::string& t)
+{
+    if (std::is_same_v<std::string, std::string>)
+    {
+        return Foo{};
+    }
+    else
+    {
+        return Bar{};
+    }
+}
+
+auto makeFooOrBar(const int& t)
+{
+    if (std::is_same_v<int, std::string>)
+    {
+        return Foo{};
+    }
+    else
+    {
+        return Bar{};
+    }
+}
+```
+]
+
+---
+.col-6[
+```
+auto makeFooOrBar(const std::string& t)
+{
+    if (std::is_same_v<std::string, std::string>)
+    {
+*       return Foo{};
+    }
+    else
+    {
+*       return Bar{};
+    }
+}
+
+auto makeFooOrBar(const int& t)
+{
+    if (std::is_same_v<int, std::string>)
+    {
+*       return Foo{};
+    }
+    else
+    {
+*       return Bar{};
+    }
+}
+```
+]
+
+.col-6[
+- Compiler error: cannot deduce type.
+]
+
+---
+layout:false
+
+layout: true
+
+## What the compiler generates?
+
+.col-6[
+```
+struct Foo{};
+struct Bar{};
+
+template <typename T>
+auto makeFooOrBar(const T& t)
+{
+    if constexpr (std::is_same_v<T, std::string>)
+    {
+        return Foo{};
+    }
+    else
+    {
+        return Bar{};
+    }
+}
+
+auto fooOrBar1 = makeFooOrBar("Foo or Bar");
+auto fooOrBar2 = makeFooOrBar(120);
+```
+]
+
+---
+
+--
+
+.col-6[
+```
+auto makeFooOrBar(const std::string& t)
+{
+    return Foo{};
+}
+
+auto makeFooOrBar(const int& t)
+{
+    return Bar{};
+}
+```
+]
+
+---
+layout:false
+
+## What the compiler generates?
+
+.row[
+.col-6[
+```
+struct Foo{};
+struct Bar{};
+
+template <typename T>
+auto makeFooOrBar(const T& t)
+{
+    if constexpr (std::is_same_v<T, std::string>)
+    {
+        return Foo{};
+    }
+    else
+    {
+        return Bar{};
+    }
+}
+
+auto fooOrBar1 = makeFooOrBar("Foo or Bar");
+auto fooOrBar2 = makeFooOrBar(120);
+```
+
+]
+
+.col-6[
+```
+auto makeFooOrBar(const std::string& t)
+{
+    return Foo{};
+}
+
+auto makeFooOrBar(const int& t)
+{
+    return Bar{};
+}
+```
+]
+]
+
+.row[
+.col-6[
+```
+std::cout << "Am I Foo?: " 
+          << std::is_same_v<Foo, decltype(fooOrBar1)> << '\n';
+std::cout << "Am I Foo?: " 
+          << std::is_same_v<Foo, decltype(fooOrBar2)> << '\n';
+```
+]
+.col-6[
+```bash
+Am I Foo: 1
+Am I Foo: 0
+```
+]
+]
+
+---
+
+
+
 ## Small buffer optimization
 
 We need to write a Buffer class with compile-time size which:
@@ -3539,7 +5356,7 @@ We need to write a Buffer class with compile-time size which:
 template <size_t N>
 struct DynamicBuffer : private std::vector<std::byte>
 {
-    using Base = std::vector<std::byte>;
+*   using Base = std::vector<std::byte>;
 
     DynamicBuffer() : Base{N} {}
 
@@ -3554,7 +5371,7 @@ struct DynamicBuffer : private std::vector<std::byte>
 template <size_t N>
 struct StaticBuffer : private std::array<std::byte, N>
 {
-    using Base = std::array<std::byte>;
+*   using Base = std::array<std::byte, N>;
 
 
 
@@ -3567,14 +5384,14 @@ struct StaticBuffer : private std::array<std::byte, N>
 
 --
 
-What we need is a single class that covers both cases.
+What we need is a single class that covers both cases:
 
 --
 ```
 template <size_t N>
 struct Buffer : private /* array or vector */
 {
-    using Base = std::array<std::byte>;
+    using Base = /* array or vector */
 
     /*...*/
 
@@ -3599,6 +5416,7 @@ constexpr auto make_base()
     }
 }
 ```
+--
 
 ```
 template <size_t N>
@@ -3606,7 +5424,7 @@ struct Buffer : private decltype(make_base<N>())
 {
     using Base = decltype(make_base<N>());
 
-    Buffer() : base(make_base<N>()) {}
+    Buffer() : Base(make_base<N>()) {}
 
     using Base::begin;
     using Base::end;
@@ -3627,27 +5445,57 @@ Static type analyses for data serialization
 
 ---
 
+.row[
+.col-6[
 ```
 void print(int v)
 {
     std::cout << v;
 }
 ```
+]
+.col-6[
+- Prints integer.
+]
+]
+
 --
+
+.row[
+.col-6[
 ```
 void print(double v)
 {
     std::cout << v;
 }
 ```
+]
+.col-6[
+- Prints double.
+]
+]
+
 --
+
+
+.row[
+.col-6[
 ```
 void print(const std::string& v)
 {
     std::cout << v;
 }
 ```
----
+]
+.col-6[
+- Prints string.
+]
+]
+
+--
+
+.row[
+.col-6[
 ```
 template <typename T>
 void print(const T& v)
@@ -3655,6 +5503,12 @@ void print(const T& v)
     std::cout << v;
 }
 ```
+]
+.col-6[
+- Prints any type `T` for which `operator<<` is defined.
+]
+]
+
 ---
 ```
 template <typename T>
@@ -3677,10 +5531,6 @@ void println(const T& v, std::string_view n = {})
     std::cout << '\n';
 }
 ```
-
---
-This will work for any T for which `operator<<` exists.
-
 --
 .row[
 .col-6[
@@ -3703,21 +5553,28 @@ This will work for any T for which `operator<<` exists.
 
 --
 
+.row[
+.col-6[
 ```
-std::vector<int> v = {1,2,3};
+std::vector v = {1,2,3};
 println(v, "numbers");
 ```
---
+]
 
+.col-6[
 ```bash
 error: invalid operands to binary expression ('std::__1::ostream' (aka 'basic_ostream<char>') and 'const std::__1::vector<int,
   std::__1::allocator<int> >')
 std::cout << v << '\n';
 ~~~~~~~~~ ^  ~
 ```
+]
+]
 
 ---
 
+.row[
+.col-6[
 ```
 template <typename T>
 void print_default(const T& v)
@@ -3725,7 +5582,16 @@ void print_default(const T& v)
     std::cout << v << '\n';
 }
 ```
+]
+.col-6[
+- Prints any type `T` for which `operator<<` is defined.
+]
+]
 
+--
+
+.row[
+.col-6[
 ```
 template <typename T>
 void print_container(const T& v)
@@ -3739,7 +5605,18 @@ void print_container(const T& v)
     std::cout << '\b' << ']';
 }
 ```
+]
+.col-6[
+- Prints any type T :
+    * which is *iterable* and
+    * `T::operator*` returns type for which `operator<<` is defined
+]
+]
 
+--
+
+.row[
+.col-6[
 ```
 template <typename T>
 void print(const T& v, std::string_view n = {})
@@ -3759,6 +5636,15 @@ void print(const T& v, std::string_view n = {})
     }
 }
 ```
+]
+
+.col-6[
+- Prints any type `T` for which `operator<<` is defined.
+- Prints any type T :
+    * which is *iterable* and
+    * `T::operator*` returns type for which `operator<<` is defined
+]
+]
 
 ---
 ## What are the properties (traits) of a container?
@@ -3779,7 +5665,8 @@ template <typename T>
 struct has_member_function_begin
 {
     template <typename U>
-    static auto apply(void* p) -> decltype(std::declval<U>().begin(), std::true_type{});
+    static auto apply(void* p) -> decltype(std::declval<U>().begin(), 
+                                           std::true_type{});
 
     template <typename>
     static auto apply(...) -> std::false_type;
@@ -3810,6 +5697,89 @@ has begin: 1
 
 ---
 
+### Test if a class is a container 
+
+```
+template <typename T>
+struct has_member_function_begin
+{
+    template <typename U>
+    static auto apply(void* p) -> decltype(std::declval<U>().begin(), 
+                                           std::true_type{});
+
+    template <typename>
+    static auto apply(...) -> std::false_type;
+
+    static constexpr bool value = decltype(apply<T>(nullptr))::value;
+};
+```
+--
+
+```
+template <typename T>
+struct has_member_function_end
+{
+    template <typename U>
+    static auto apply(void* p) -> decltype(std::declval<U>().end(), 
+                                           std::true_type{});
+
+    template <typename>
+    static auto apply(...) -> std::false_type;
+
+    static constexpr bool value = decltype(apply<T>(nullptr))::value;
+};
+```
+--
+
+```
+template <typename T>
+struct has_member_type_iterator
+{
+    template <typename U>
+    static auto apply(typename U::iterator* p) -> std::true_type
+
+    template <typename>
+    static auto apply(...) -> std::false_type;
+
+    static constexpr bool value = decltype(apply<T>(nullptr))::value;
+};
+```
+---
+### Test if a class is a container 
+
+```
+template <typename T>
+struct is_container
+{
+    static constexpr bool value = has_member_function_begin<T>::value &&
+                                  has_member_function_end<T>::value &&
+                                  has_member_type_iterator<T>::value;
+};
+```
+--
+
+.row[
+.col-7[
+
+```
+std::cout << "is_container: " << is_container<int>::value;
+std::cout << "is_container: " << is_container<std::vector<int>>::value;
+std::cout << "is_container: " << is_container<std::map<int, int>>::value;
+```
+]
+.col-5[
+
+```
+is_container: 0
+is_container: 1
+is_container: 1
+```
+]
+]
+
+
+---
+
 ##`std::void_t`
 
 ```
@@ -3825,17 +5795,9 @@ using U = std::void_t<int, std::string, double>; // U is also void
 ```
 
 ---
+### Test if a class is a container with `std::void_t` 
 
-```
-template <typename T, typename=void>
-struct has_member_function_begin : std::false_type{};
-
-template <typename T>
-struct has_member_function_begin<T, std::void_t<decltype(std::declval<T>().begin())>> : std::true_type{};
-
-```
---
-
+---
 ```
 template <typename T, typename=void>
 struct is_container : std::false_type{};
@@ -4910,10 +6872,6 @@ writer << makeNvp("baz", baz) << '\n';
 ---
 
 
-<!-- end constexpr -->
-
-
-<!-- begin serialization -->
 
 #JSON serialization library
 
@@ -5494,9 +7452,6 @@ void serialize_impl(std::ostream& os, const std::string& n, const T& v)
 
 ```
 ]]
-
-<!-- end serialization -->
-
 
 ---
 

@@ -12,8 +12,8 @@ $code-background  : #F8F8F8;
 $overlay          : transparentize(#000, .5);
 $font-size        : 28px;
 $font-size-impact : 128px;
-$font             : Arial, Helvetica, sans-serif;
-$font-title       : Arial, Helvetica, sans-serif;
+$font             : Verdana;
+$font-title       : Verdana;
 $font-fixed       : 'Lucida Console', Monaco, monospace;
 $margin           : 20px;
 $iframe-scale     : 1.5;
@@ -87,7 +87,7 @@ blockquote {
 }
 
 .remark-code-string-highlighted, .remark-code-line-highlighted {
-    background: #FFF3;
+    background: #AF0;
     font-weight: bold;
     border-radius: 3px;
 }
@@ -178,6 +178,9 @@ blockquote {
 .small { font-size: .8em; }
 .dark-bg { background-color: $dark; }
 .alt-bg { background-color: $secondary; };
+.text-red{color: red;};
+.text-green{color: green;};
+.greyout{color: lightgray;};
 
 // Simple 12-columns grid system
 .row {
@@ -209,10 +212,16 @@ blockquote {
 
 .alert {
     padding: 20px;
-    background-color: #f44336; /* Red */
+    background-color: red;
     color: white;
-    margin-bottom: 15px;
+    margin-bottom: 5px;
     border-radius: 5px;
+}
+
+.emph {
+    padding: 10px;
+    color: darkorange;
+    text-align: center;
 }
 
 .note { /*next paragraph after <div class="note"></div>*/

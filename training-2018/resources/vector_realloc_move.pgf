@@ -1,0 +1,29 @@
+\usetikzlibrary{positioning,shapes,shadows,arrows,calc,matrix,backgrounds,decorations.pathreplacing}
+
+
+\newcommand{\element}[2]{
+		\foreach \r in {#1} {%
+  			\globaldefs=1\relax
+  			\tikzset{column \r/.style={nodes={fill=#2}}}
+		}%
+	}
+
+\begin{tikzpicture}[font=\ttfamily,
+		vector/.style={matrix of nodes,nodes={draw, minimum size=7mm},
+		column sep=-\pgflinewidth, row sep=0.0mm, nodes in empty cells}]
+	
+ 	    \element{1,2,3,4,5}{white}
+		\element{6,7,8,9,10}{green!30}
+		\matrix[vector] (v1){
+			& & & & & & & & &\\};
+		
+		\element{1,2,3,4,5}{green!30}
+       \element{5}{red}
+		\element{6,7,8,9,10,11,12,13}{white}
+		\matrix[vector, below=of v1-1-7] (v2){
+			& & & & & & & & & & & &\\};
+			
+		\draw[->](v1-1-5.south) -- (v2-1-5.north) node [midway, right, font=\small] 
+			{\texttt{move}};	
+		\draw ([xshift=-5.5mm]v2-1-6.south)--++(90:-3mm) node [below] {Exception!};
+\end{tikzpicture}
