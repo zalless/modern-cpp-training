@@ -37,17 +37,29 @@ but...
 
 ## Interfacing with C API
 
+.row[
+.col-6[
 ``` cpp
 void configureNetworkInterface(const std::string& ifname)
 {
     ifreq ifr ;
-    strcpy(ifr.ifr name,ifname.cstr());
+    strcpy(ifr.ifr_name,ifname.cstr());
 }
 ```
+]
+.col-6[
+```
+struct ifreq {
+    char ifr_name[IFNAMSIZ]; /* Interface name */
+    /*...*/
+};
+```
+]
+]
 
 --
 .emph[
-Who guarantees that ifname fits into the fixed-size ifr name buffer?
+Who guarantees that ifname fits into the fixed-size `ifr_name` buffer?
 ]
 ---
 
@@ -57,7 +69,7 @@ Who guarantees that ifname fits into the fixed-size ifr name buffer?
 void configureNetworkInterface(const std::string& ifname)
 {
     ifreq ifr ;
-    strncpy(ifr.ifr name,ifname.cstr(), sizeof(ifr.ifr_name));
+    strncpy(ifr.ifr_name,ifname.cstr(), sizeof(ifr.ifr_name));
 }
 ```
 
@@ -207,6 +219,7 @@ size_t safeStringCopy(const char* src, char* dest, size_t destLen)
     return len;
 }
 ```
+Second overload taking `const char*`
 
 --
 ```
@@ -250,6 +263,7 @@ size_t safeStringCopy(const char* src, char* dest, size_t destLen)
     return len;
 }
 ```
+
 ]
 
 ---
@@ -338,9 +352,10 @@ constexpr basic_string_view(const CharT* s);
 ]
 
 .col-6[
+.small[
 - 'reference' to const character sequences
-- provides `std::string`-like interface
-    * 
+- provides `std::string`-like interface without owning the underlying memory
+]
 ]
 ]
 
@@ -363,7 +378,6 @@ sv.remove_prefix(4);  // sv == "string";
 
 ---
 
-.col-6[
 ```
 size_t safeStringCopy(std::string_view src, char* dest, size_t destLen)
 {
@@ -377,11 +391,8 @@ size_t safeStringCopy(std::string_view src, char* dest, size_t destLen)
     return len;
 }
 ```
-]
 
-.col-6[
-- single function which serves both `std::string` and raw string
-]
+.center[ Single function which serves both `std::string` and raw string ]
 
 ---
 
@@ -500,7 +511,8 @@ public:
 Returns `std::string_view`: no copy + nice string-like interface.
 ]
 
---
+---
+class: middle, center
 
 .note[
 When a class keeps string data as char array the accessor member function should return
@@ -572,7 +584,799 @@ class: chapter
 
 `std::forward`
 ]
+
 ---
+## `decltype`
+
+.row[
+.col-6[
+
+```
+int i = 10;
+using T = decltype(i);
+```
+]
+.col-6[
+- `T` is `int`
+]
+]
+
+--
+
+.row[
+.col-6[
+
+```
+int i = 10;
+using T = decltype(i+20);
+```
+
+]
+.col-6[
+- `T` is `int`
+]
+]
+
+--
+
+.row[
+.col-6[
+
+```
+int i = 10;
+using T = decltype(i==10);
+```
+
+]
+.col-6[
+- `T` is `bool`
+]
+]
+
+--
+
+.row[
+.col-6[
+
+```
+std::map<int, string> m;
+using T = decltype(m);
+```
+
+]
+.col-6[
+- `T` is `std::map<int, string>`
+]
+]
+
+--
+
+.row[
+.col-6[
+
+```
+std::map<int, string> m;
+using T = decltype(m)::key_type;
+```
+
+]
+.col-6[
+- `T` is `int`
+]
+]
+
+--
+
+---
+## `decltype`
+
+.row[
+.col-6[
+
+```
+struct Foo
+{
+    std::string toString() const;
+};
+
+using T = decltype(Foo().toString());
+```
+
+]
+.col-6[
+- `T` is `std::string`
+]
+]
+
+--
+
+.row[
+.col-6[
+
+```
+struct Foo
+{
+    Foo(int i);
+    std::string toString() const;
+};
+
+using T = decltype(Foo().toString());
+```
+
+]
+.col-6[
+- compiler error
+]
+]
+
+
+---
+## `decltype`
+
+.row[
+.col-6[
+
+```
+struct Foo
+{
+    std::string toString() const;
+};
+
+using T = decltype(Foo().toString());
+```
+
+]
+.col-6[
+- `T` is `std::string`
+]
+]
+
+
+.row[
+.col-6[
+
+```
+struct Foo
+{   
+    Foo(int i);
+    std::string toString() const;
+};
+
+using T = decltype(Foo(10).toString());
+```
+
+]
+.col-6[
+- `T` is `std::string`
+]
+]
+
+--
+
+.row[
+.col-6[
+
+```
+struct Foo
+{
+    Foo(int i);
+    std::string toString() const;
+};
+
+using T = decltype(std::declval<Foo>().toString());
+```
+
+]
+.col-6[
+- `T` is `std::string`
+]
+]
+
+---
+
+class: chapter
+
+.greyout[
+`decltype`
+]
+
+`<type_traits>`
+
+.greyout[
+
+`std::integral_constant`
+
+`std::forward`
+]
+
+---
+
+## `<type_traits>`
+
+- C++11 header file defining set of meta-functions to examine type properties
+- type traits are being used in generic implementations of algorithms taylored for
+  types with specific properties
+- types are very often used with `std::enable_if` and `if constexpr`
+
+Some examples:
+
+
+```
+bool v1 = std::is_same_v<std::string, std::string>; // v1 == true
+bool v2 = std::is_same_v<std::string, int>; // v2 == false
+
+bool v1 = std::is_pointer_v<int>; // v1 == false
+bool v2 = std::is_pointer_v<int*>; // v2 == true
+
+bool v1 = std::is_trivially_copyable_v<std::string>; // v1 == false
+bool v2 = std::is_trivially_copyable_v<double>; // v2 == true
+
+bool v1 = std::is_convertible<const char*, std::string>; // v1 == true
+bool v2 = std::is_convertible<int, std::string>; // v2 == false
+
+```
+
+--
+
+.center[...and many more]
+
+https://en.cppreference.com/w/cpp/header/type_traits
+
+---
+
+class: chapter
+
+.greyout[
+`decltype`
+
+`<type_traits>`
+
+]
+
+`std::integral_constant`
+
+.greyout[
+`std::forward`
+]
+
+---
+## `std::integral_constant`
+
+```
+template <typename T, T v>
+integral_constant
+{
+    static constexpr T value = v;
+};
+```
+--
+
+```
+using const_5 = std::integral_constant<int, 5>;
+using const_6 = std::integral_constant<int, 6>;
+
+std::cout << const_5::value << '\n'; // prints 5
+std::cout << const_6::value << '\n'; // prints 6
+
+```
+
+--
+
+```
+using true_type  = integral_constant<bool, true>;
+using false_type = integral_constant<bool, false>;
+```
+--
+
+```
+template <typename T>
+struct is_pointer : false_type {};
+
+template <typename T>
+struct is_pointer<T*> : true_type {};
+
+```
+
+--
+```
+bool v1 = std::is_pointer<int>::value; // v1 == false
+bool v2 = std::is_pointer<int*>::value; // v2 == true
+
+```
+
+--
+```
+template <typename T>
+constexpr bool is_pointer_v = std::is_pointer<T>::value;
+```
+--
+
+```
+bool v1 = std::is_pointer_v<int>;  // v1 == false
+bool v2 = std::is_pointer_v<int*>; // v2 == true
+```
+
+---
+
+class: chapter
+
+.greyout[
+`decltype`
+
+`<type_traits>`
+
+
+`std::integral_constant`
+]
+
+`std::forward`
+
+---
+layout: true
+
+.row[
+.col-6[
+```
+class Foo
+{
+public:
+    Foo() = default;
+
+    Foo(const Foo& other) { std::cout << "Copy Foo\n"; }
+
+    Foo(Foo&& other) { std::cout << "Move Foo\n"; }
+};
+
+class Bar
+{
+    Foo foo;
+public:
+    Bar(const Foo& f) : foo(f) {}
+    Bar(Foo&& f) : foo(std::move(f)) {}
+};
+
+```
+]]
+
+---
+
+--
+
+.row[
+.col-6[
+```
+unique_ptr<Bar> bar1{new Bar{Foo{}}}; // r-value reference
+
+Foo foo;
+unique_ptr<Bar> bar2{new Bar{foo}}; // l-value reference
+```
+]]
+
+--
+
+.row[
+.col-6[
+```bash
+Move Foo
+
+Copy Foo
+```
+]]
+
+
+---
+layout: false
+
+layout: true
+
+.row[
+.col-6[
+```
+class Foo
+{
+public:
+    Foo() = default;
+
+    Foo(const Foo& other) { std::cout << "Copy Foo\n"; }
+
+    Foo(Foo&& other) { std::cout << "Move Foo\n"; }
+};
+
+class Bar
+{
+    Foo foo;
+public:
+    Bar(const Foo& f) : foo(f) {}
+    Bar(Foo&& f) : foo(std::move(f)) {}
+};
+
+```
+]
+
+.col-6[
+```
+template<typename T, typename... Args>
+unique_ptr<T> make_unique(Args&&... args)
+{
+    return std::unique_ptr<T>(new T{args...});
+}
+```
+]
+]
+
+---
+
+--
+
+.row[
+.col-6[
+```
+unique_ptr<Bar> bar1{new Bar{Foo{}}}; // r-value reference
+
+Foo foo;
+unique_ptr<Bar> bar2{new Bar{foo}}; // l-value reference
+```
+]]
+
+
+.row[
+.col-6[
+```bash
+Move Foo
+
+Copy Foo
+```
+]]
+
+---
+
+.row[
+.col-6[
+```
+unique_ptr<Bar> bar1{new Bar{Foo{}}}; // r-value reference
+
+Foo foo;
+unique_ptr<Bar> bar2{new Bar{foo}}; // l-value reference
+```
+]
+.col-6[
+```
+auto bar1 = make_unique<Bar>(Foo{}); // r-value reference
+
+Foo foo;
+auto bar2 = make_unique<Bar>(foo); // l-value reference
+
+```
+]
+]
+
+
+.row[
+.col-6[
+```bash
+Move Foo
+
+Copy Foo
+```
+]]
+
+---
+
+.row[
+.col-6[
+```
+unique_ptr<Bar> bar1{new Bar{Foo{}}}; // r-value reference
+
+Foo foo;
+unique_ptr<Bar> bar2{new Bar{foo}}; // l-value reference
+```
+]
+.col-6[
+```
+auto bar1 = make_unique<Bar>(Foo{}); // r-value reference
+
+Foo foo;
+auto bar2 = make_unique<Bar>(foo); // l-value reference
+
+```
+]
+]
+
+
+.row[
+.col-6[
+```bash
+Move Foo
+
+Copy Foo
+```
+]
+.col-6[
+```bash
+*Copy Foo
+
+Copy Foo
+```
+]
+]
+
+--
+
+.center[.emph[ Where does the extra copy come from? ]]
+
+---
+layout: false
+
+## Forwarding reference
+
+There are special template type deduction rules for a function taking a *forwarding reference*:
+```
+template <typename T>
+void func(T&& value);
+```
+--
+
+- When called with *l-value* of type `Foo` T is deduced to `Foo&`
+
+.row[
+.col-6[
+```
+Foo foo;
+func(foo); // T == Foo&
+```
+]
+
+.col-6[
+```
+void func(Foo& && value); 
+// As per reference collapsing rules this becomes:
+void func(Foo& value);
+
+```
+]
+]
+
+--
+
+- When called with *r-value* of type `Foo` T is deduced to `Foo`
+
+.row[
+.col-6[
+```
+func(Foo{}); // T == Foo
+```
+]
+
+.col-6[
+```
+void func(Foo&& value); 
+
+```
+]
+]
+
+---
+
+## Forwarding reference
+
+.row[
+.col-6[
+```
+void doFoo(const Foo&);
+void doFoo(Foo&&);
+
+template <typename T>
+void func(T&& value)
+{
+    doFoo(value);
+}
+```
+]
+
+
+.col-6[
+```
+Foo foo;
+func(foo);   // doFoo(const Foo&) is called
+
+func(Foo{}); // doFoo(const Foo&) is called
+```
+]
+]
+
+--
+
+.row[
+.col-6[
+```
+void doFoo(const Foo&);
+void doFoo(Foo&&);
+
+template <typename T>
+void func(T&& value)
+{
+    doFoo(std::forward<T>(value));
+}
+```
+]
+
+
+.col-6[
+```
+Foo foo;
+func(foo);   // doFoo(const Foo&) is called
+
+func(Foo{}); // doFoo(Foo&&) is called
+```
+]
+]
+
+--
+
+.center[Perfect forwarding]
+
+---
+
+layout: true
+
+.row[
+.col-6[
+```
+class Foo
+{
+public:
+    Foo() = default;
+
+    Foo(const Foo& other) { std::cout << "Copy Foo\n"; }
+
+    Foo(Foo&& other) { std::cout << "Move Foo\n"; }
+};
+
+class Bar
+{
+    Foo foo;
+public:
+    Bar(const Foo& f) : foo(f) {}
+    Bar(Foo&& f) : foo(std::move(f)) {}
+};
+
+```
+]
+
+.col-6[
+```
+template<typename T, typename... Args>
+unique_ptr<T> make_unique(Args&&... args)
+{
+    return std::unique_ptr<T>(new T{args...});
+}
+```
+]
+]
+
+---
+
+.row[
+.col-6[
+```
+unique_ptr<Bar> bar1{new Bar{Foo{}}}; // r-value reference
+
+Foo foo;
+unique_ptr<Bar> bar2{new Bar{foo}}; // l-value reference
+```
+]
+.col-6[
+```
+auto bar1 = make_unique<Bar>(Foo{}); // r-value reference
+
+Foo foo;
+auto bar2 = make_unique<Bar>(foo); // l-value reference
+
+```
+]
+]
+
+
+.row[
+.col-6[
+```bash
+Move Foo
+
+Copy Foo
+```
+]
+.col-6[
+```bash
+*Copy Foo
+
+Copy Foo
+```
+]
+]
+
+---
+layout: false
+
+
+layout: true
+
+.row[
+.col-6[
+```
+class Foo
+{
+public:
+    Foo() = default;
+
+    Foo(const Foo& other) { std::cout << "Copy Foo\n"; }
+
+    Foo(Foo&& other) { std::cout << "Move Foo\n"; }
+};
+
+class Bar
+{
+    Foo foo;
+public:
+    Bar(const Foo& f) : foo(f) {}
+    Bar(Foo&& f) : foo(std::move(f)) {}
+};
+
+```
+]
+
+.col-6[
+```
+template<typename T, typename... Args>
+unique_ptr<T> make_unique(Args&&... args)
+{
+*   return std::unique_ptr<T>(new T{std::forward<Args>(args)...});
+}
+```
+]
+]
+
+---
+
+.row[
+.col-6[
+```
+unique_ptr<Bar> bar1{new Bar{Foo{}}}; // r-value reference
+
+Foo foo;
+unique_ptr<Bar> bar2{new Bar{foo}}; // l-value reference
+```
+]
+.col-6[
+```
+auto bar1 = make_unique<Bar>(Foo{}); // r-value reference
+
+Foo foo;
+auto bar2 = make_unique<Bar>(foo); // l-value reference
+
+```
+]
+]
+
+
+.row[
+.col-6[
+```bash
+Move Foo
+
+Copy Foo
+```
+]
+.col-6[
+```bash
+*Move Foo
+
+Copy Foo
+```
+]
+]
+
+---
+layout: false
 
 class: chapter
 
@@ -785,12 +1589,9 @@ std::optional<T> make_optional(Args&&... args)
 layout: false
 
 
-# `std::optional<T>`
-### Function argument use-case
-
----
-
 layout: true
+
+# Infamous `atoi`
 
 .row[
 .col-6[
@@ -3391,9 +4192,44 @@ for (auto i = 1; i <= 15; i++)
 
 ---
 
+class: middle, center
+
+.note[
+    If move constructor is **not** `noexcept` operations on re-allocating containers may become
+    expensive.
+]
+
+---
+class: middle, center
+
+Class template parameter deduction
+
+---
 
 
-# Class template parameter deduction
+Function template type deduction has existed as long as the templates.
+
+```
+template <typename T>
+void f(const T& t);
+
+f(10); // T is deduced to int
+```
+
+--
+
+C++17 introduces class template type deduction
+
+```
+template <typename T>
+class Foo
+{
+public:
+    Foo(const T& t);
+};
+
+Foo foo(10);
+```
 
 
 ---
@@ -3418,27 +4254,6 @@ auto p = std::make_pair(1,2);
 // OK in C++17: first parameter is deduced to int, second to float
 std::pair p{1, 2.0f};
 ```
----
-
-```
-template <typename T>
-void f(const T& t);
-
-f(10);
-```
---
-
-```
-template <typename T>
-class Foo
-{
-public:
-    Foo(const T& t);
-};
-
-Foo foo(10);
-```
-
 ---
 
 .col-5[
@@ -3498,12 +4313,12 @@ std::unique_ptr p{new int}; // compiler error
 ]
 
 .row[
-`unique_ptr` template argument cannot be deduced because does not know whether to deduce it to be
+.center[.emph[`unique_ptr` template argument cannot be deduced because does not know whether to deduce it to be
 **`unique_ptr<int>`** or **`unique_ptr<int[]>`**
-]
+]]]
 ---
 
-#C-array vs std::array
+## C-array vs std::array
 
 ```
 char x[100];
@@ -3548,7 +4363,9 @@ Size of x is **100** bytes.
 
 ---
 
-#Algorithm predicates
+class: middle, center
+
+Algorithm predicates
 
 ---
 
@@ -3925,7 +4742,7 @@ struct and_
 };
 ```
 .center[
-Nice but a cryptic trick to avoid defining 2 overloads.
+Nice but cryptic trick to avoid defining 2 overloads.
 ]
 
 ---
@@ -4187,186 +5004,14 @@ auto oldNissans = subset(automobiles, And<Automobile>(WithMake{"Nissan"}, WithYe
 ]
 
 ---
-## `decltype`
 
-.row[
-.col-6[
-
-```
-int i = 10;
-using T = decltype(i);
-```
-
-]
-.col-6[
-- `T` is `int`
-]
-]
-
-.row[
-.col-6[
-
-```
-int i = 10;
-using T = decltype(i+20);
-```
-
-]
-.col-6[
-- `T` is `int`
-]
-]
-
-.row[
-.col-6[
-
-```
-int i = 10;
-using T = decltype(i==10);
-```
-
-]
-.col-6[
-- `T` is `bool`
-]
-]
-
-.row[
-.col-6[
-
-```
-std::map<int, string> m;
-using T = decltype(m);
-```
-
-]
-.col-6[
-- `T` is `std::map<int, string>`
-]
-]
-
-.row[
-.col-6[
-
-```
-std::map<int, string> m;
-using T = decltype(m)::key_type;
-```
-
-]
-.col-6[
-- `T` is `int`
-]
-]
-
----
-## `decltype`
-
-.row[
-.col-6[
-
-```
-struct Foo
-{
-    std::string toString() const;
-};
-
-using T = decltype(Foo().toString());
-```
-
-]
-.col-6[
-- `T` is `std::string`
-]
-]
-
-.row[
-.col-6[
-
-```
-struct Foo
-{
-    Foo(int i);
-    std::string toString() const;
-};
-
-using T = decltype(Foo().toString());
-```
-
-]
-.col-6[
-- compiler error
-]
-]
-
----
-## `decltype`
-
-.row[
-.col-6[
-
-```
-struct Foo
-{
-    std::string toString() const;
-};
-
-using T = decltype(Foo().toString());
-```
-
-]
-.col-6[
-- `T` is `std::string`
-]
-]
-
-.row[
-.col-6[
-
-```
-struct Foo
-{   
-    Foo(int i);
-    std::string toString() const;
-};
-
-using T = decltype(Foo(10).toString());
-```
-
-]
-.col-6[
-- `T` is `std::string`
-]
-]
-
-.row[
-.col-6[
-
-```
-struct Foo
-{
-    Foo(int i);
-    std::string toString() const;
-};
-
-using T = decltype(std::declval<Foo>().toString());
-```
-
-]
-.col-6[
-- `T` is `std::string`
-]
-]
-
----
+class: middle, center
 
 #`constexpr if` as SFINAE replacement
 
 ---
 
 ##Substitution Failure Is Not An Error (SFINAE)
-
---
 
 ```
 struct Foo
@@ -4380,7 +5025,7 @@ void f(T t, typename T::type* p = nullptr) {}
 int main()
 {
     f(Foo{});
-*   f(20);
+    f(20);
 }
 ```
 
@@ -4431,10 +5076,10 @@ void f(...) {}
 int main()
 {
     f(Foo{});
-*   f(20);
+    f(20);
 }
 ```
-Compiles fine thanks to SFINAE.
+.center[Compiles fine thanks to SFINAE.]
 
 ---
 layout: true
@@ -4584,11 +5229,9 @@ template <class Iter>
 struct is_trivially_copyable : std::is_trivially_copyable<typename std::iterator_traits<Iter>::value_type> {};
 
 template <class Iter>
-struct is_memcpy_copyable
-{
-    static constexpr bool value = is_random_access_iterator<Iter>::value &&
-                                  is_trivially_copyable<Iter>::value;
-};
+struct is_memcpy_copyable : std::integral_constant<bool, is_random_access_iterator<Iter>::value &&
+                                                         is_trivially_copyable<Iter>::value>
+{};
 ```
 ---
 layout: true
@@ -4647,6 +5290,8 @@ layout: false
 
 ---
 
+## C++17 `if constexpr`
+
 ```
 template <class InputIt, class OutputIt>
 void copy_n(InputIt first, size_t n, OutputIt dest_first)
@@ -4663,6 +5308,9 @@ void copy_n(InputIt first, size_t n, OutputIt dest_first)
 ```
 ---
 layout: false
+
+
+## C++17 `if constexpr`
 
 ```
 template <class InputIt, class OutputIt>
@@ -4721,7 +5369,17 @@ std::vector<SmallString> v1 = {SmallString{"small"}};
 std::vector<SmallString> v2;
 copy_n(v1.begin(), 1, std::back_inserter(v2));
 ```
+
+--
+`copy_default` is called because `std::back_inserter` does not return *random access iterator*
+
 ---
+class: middle, center
+
+How `if constexpr` works?
+
+---
+
 
 .col-6[
 ```
@@ -4950,7 +5608,7 @@ void print(const int& t)
 ```
 ]
 .col-6[
-- Compiler generates two different function bodies which `if` or `else` branch
+- Compiler generates two different function bodies with `if` or `else` branch
   applicable to the substituted type
 - No dead code
 ]
@@ -5339,6 +5997,10 @@ Am I Foo: 0
 ]
 ]
 
+--
+
+.center[We can have compile functions which return **different** types based on input type]
+
 ---
 
 
@@ -5441,7 +6103,9 @@ Buffer<2048> bigBuff;  // heap
 
 ---
 
-Static type analyses for data serialization
+class: middle, center
+
+JSON serialization library in 10 minutes
 
 ---
 
@@ -5749,11 +6413,10 @@ struct has_member_type_iterator
 
 ```
 template <typename T>
-struct is_container
+struct is_container : std::integral_constant<bool, has_member_function_begin<T>::value &&
+                                                   has_member_function_end<T>::value &&
+                                                   has_member_type_iterator<T>::value;
 {
-    static constexpr bool value = has_member_function_begin<T>::value &&
-                                  has_member_function_end<T>::value &&
-                                  has_member_type_iterator<T>::value;
 };
 ```
 --
@@ -6008,27 +6671,12 @@ auto u = std::make_unique<int>(765);
 
 ```
 template <typename T, typename=void>
-struct has_pointer_operator : std::false_type{};
-
-template <typename T>
-struct has_pointer_operator <T, std::void_t<decltype(std::declval<T>().operator->())>> : std::true_type{};
+struct is_pointer_like : std::false_type{};
 
 template <typename T, typename=void>
-struct has_pointer_deref_operator : std::false_type{};
+struct is_pointer_like<T, std::void_t<decltype(std::declval<T>().operator->()),
+                                       decltype(std::declval<T>().operator*()) >> : std::true_type{};
 
-template <typename T>
-struct has_pointer_deref_operator <T, std::void_t<decltype(std::declval<T>().operator*())>> : std::true_type{};
-```
---
-
-```
-template <typename T>
-struct is_pointer
-{
-    static constexpr bool value = std::is_pointer<T>::value || 
-                                  (has_pointer_operator<T>::value &&  
-                                  has_pointer_deref_operator<T>::value);
-};
 ```
 ---
 
@@ -6066,7 +6714,8 @@ void print(const T& v, std::string_view n = {})
     {
         print_container(v);
     }
-*   else if constexpr (::is_pointer<T>::value)
+*   else if constexpr (std::is_pointer<T>::value || 
+                       is_pointer_like<T>::value)
     {
         print_pointer(v);
     }
@@ -6174,6 +6823,9 @@ layout: false
 ## `std::optional`
 
 --
+
+`std::optional` is pointer-like so will fall into `print_pointer`:
+
 ```
 template <typename T>
 void print_pointer(const T& v)
@@ -6194,17 +6846,18 @@ Won't compile because `std::optional` is not comparable with nullptr
 ## `std::optional`
 
 ```
-template <typename T, typename=void>
-struct Null
-{
-    static constexpr std::nullptr_t value = nullptr;
-};
-
 template <typename T>
-struct Null<T, std::void_t<decltype(std::declval<T>() = std::nullopt)>>
+auto makeNullValue()
 {
-    static constexpr std::nullopt_t value = std::nullopt;
-};
+    if constexpr (std::is_assignable_v<T, std::nullopt_t>)
+    {
+        return std::nullopt;
+    }
+    else
+    {
+        return nullptr;
+    }
+}
 
 ```
 
@@ -6212,14 +6865,14 @@ struct Null<T, std::void_t<decltype(std::declval<T>() = std::nullopt)>>
 template <typename T>
 void print_pointer(const T& v)
 {
-*   if (v == Null<T>::value)
+*   if (v == makeNullValue())
         std::cout << "null";
     else
         print(*v, {});
 }
 ```
 
---
+---
 
 Now `print_pointer` works for:
 * raw pointer
@@ -6287,7 +6940,7 @@ std::optional<int> o2;
 ---
 
 .row[
-.col-6[
+.col-7[
 
 ```
 std::vector<std::optional<int>> vo = {4,5,6, std::nullopt, 8};
@@ -6295,7 +6948,7 @@ println(vo, "vector_of_optionals");
 
 ```
 ]
-.col-6[
+.col-5[
 ```bash
 
 vector_of_optionals=[4,5,6,null,8]
@@ -6329,6 +6982,10 @@ optional_vector_of_optionals=[4,5,6,null,8]
 
 ]
 ]
+
+--
+
+.center[`vector` of `optional` works out of the box]
 
 --
 .row[
@@ -6371,7 +7028,8 @@ void print(const T& v, std::string_view n = {})
     {
         print_container(v);
     }
-   else if constexpr (::is_pointer<T>::value)
+    else if constexpr (std::is_pointer<T>::value || 
+                       is_pointer_like<T>::value)
     {
         print_pointer(v);
     }
@@ -6769,30 +7427,40 @@ struct Foo
 
 .col-6[
 ```
-class Writer
+template <typename T>
+void
+print(std::ostream& os, const T& v, std::string_view n)
 {
-    /*...*/
-
-    template <typename T>
-    friend Writer& operator<<(Writer& writer, Nvp<T> nvp)
+    if (!n.empty())
     {
-*       if constexpr (has_member_function_serialize<T, Writer&>::value)
-        {
-
-            if (!nvp.first.empty())
-            {
-                std::cout << nvp.first << '=';
-            }
-            nvp.second.serialize(writer);
-        }
-        else
-        {
-            print(writer.mOs, nvp.second, nvp.first);
-        }
-        return writer;
+        std::cout << '\"' << n << '\"' << ':';
     }
-};
+
+    if constexpr (is_container<T>::value)
+    {
+        print_container(os, v);
+    }
+    else if constexpr (is_pointer_like<T>::value || std::is_pointer_v<T>)
+    {
+        print_pointer(os, v);
+    }
+*   else if constexpr (has_member_function_serialize<T, Writer&>::value)
+    {
+        Writer writer{os};
+        writer << '{';
+        v.serialize(writer);
+        writer << '}';
+    }
+    else
+    {
+        print_default(os, v);
+    }
+}
 ```
+]
+]
+
+---
 
 ```
 template <typename T, class Writer, typename = void>
@@ -6801,10 +7469,9 @@ struct has_member_function_serialize : std::false_type {};
 template <typename T, class Writer>
 struct has_member_function_serialize<T, Writer,
     std::void_t<decltype(std::declval<T>().serialize(std::declval<Writer>()))>>
-    : std::true_type {};
+        : std::true_type {};
 ```
-]
-]
+
 
 ---
 
@@ -6867,668 +7534,11 @@ writer << makeNvp("baz", baz) << '\n';
 --
 
 ```bash
-"baz":{"name":"Some cool BAZ","valid":true,"bar":{"foos":[{"i":10,"s":"foo10"},{"i":20,"s":"foo20"}]}}
+{"name":"Some cool BAZ","valid":true,"bar":{"foos":[{"i":10,"s":"foo10"},{"i":20,"s":"foo20"}]}}
 ```
----
-
-
-
-#JSON serialization library
-
----
-layout: true
-class: inverse
-
-#JSON name-value pair
-
-"name" : T
 
 ---
 
-Where T can be:
-- string
-- number
-- boolean
-- object
-- array
-- null
+class: impact
 
-
----
-
-```
-template <typename T>
-using Nvp = std::pair<const std::string&, const T&>;
-```
----
-
-```
-template <typename T>
-using Nvp = std::pair<const std::string&, const T&>;
-
-template <typename T>
-Nvp<T> makeNvp(const std::string& n, const T& v)
-{
-    return std::make_pair(std::cref(n), std::cref(v));
-}
-```
-
-
----
-layout: false
-
-
-```
-class Archive
-{
-    std::ostream& mOs;
-
-public:
-    Archive(std::ostream& os) : mOs(os){}
-
-    template <class T>
-    friend Archive& operator<<(Archive& arch, Nvp<T> nvp);
-
-private:
-    /* ...  */
-};
-
-template <class T>
-Archive& operator<<(Archive& arch, Nvp<T> nvp)
-{
-    /*...*/
-}
-```
---
-.col-5[
-```
-Archive archive{std::cout};
-archive << makeNvp("x", 123);
-```
-]
-
---
-
-.col-5[
-```bash
-"x" : 123,
-```
-]
-
----
-
-.row[
-.col-6[
-```
-class Archive
-{
-    std::ostream& mOs;
-
-public:
-    Archive(std::ostream& os) : mOs(os){}
-
-    template <class T>
-    friend Archive& operator<<(Archive& arch, Nvp<T> nvp);
-
-private:
-    template <typename T>
-    void serialize(Nvp<T> nvp)
-    {
-*        details::serialize_impl(mOs, nvp.first, nvp.second);
-    }
-};
-
-template <class T>
-Archive& operator<<(Archive& arch, Nvp<T> nvp)
-{
-    arch.serialize(nvp);
-    return arch;
-
-}
-```
-]
-
-.col-6[
-```
-struct serialize_scalar
-{
-    template <typename T>
-    static void apply(std::ostream& os, const std::string& n, const T& v)
-    {
-        os << "\"" << n << "\"" << ":"  << v << ",";
-    }
-}
-
-template <typename T>
-void serialize_impl(std::ostream& os, const std::string& n, const T& v)
-{
-    return serialize_scalar::apply(os, n, v)
-}
-
-```
-]]
-
-.row[
-.col-5[
-```
-Archive archive{std::cout};
-archive << makeNvp("x", 123);
-```
-]
-
-.col-5[
-```bash
-"x" : 123,
-```
-]]
-
---
-
-
----
-
-.row[
-.col-6[
-```
-struct serialize_scalar
-{
-    template <typename T>
-    static void apply(std::ostream& os, const std::string& n, const T& v)
-    {
-        os << "\"" << n << "\"" << ":"  << v << ",";
-    }
-}
-```
-]
-]
-
-.row[
-.col-5[
-```
-archive << makeNvp("x", 123);
-```
-]
-
-.col-5[
-```bash
-"x" : 123,
-```
-]]
-
---
-.row[
-.col-5[
-```
-archive << makeNvp("name", "Luke Skywalker");
-```
-]
-
-
-.col-5[
-```bash
-"name" : Luke Skywalker,
-```
-]]
-
----
-.row[
-.col-6[
-```
-struct serialize_scalar
-{
-    template <typename T>
-    static void apply(std::ostream& os, const std::string& n, const T& v)
-    {
-        os << "\"" << n << "\"" << ":"  << v << ",";
-    }
-
-    static void apply(std::ostream& os, const std::string& n,
-                                        const std::string& v)
-    {
-        os << "\"" << n << "\"" << ":"  << "\"" << v << "\"" << ",";
-    }
-}
-```
-]
-]
-
-.row[
-.col-5[
-```
-archive << makeNvp("x", 123);
-```
-]
-
-.col-5[
-```bash
-"x" : 123,
-```
-]]
-
-.row[
-.col-5[
-```
-archive << makeNvp("name", "Luke Skywalker");
-```
-]
-
-
-.col-5[
-```bash
-"name" : "Luke Skywalker",
-```
-]]
-
---
-.row[
-.col-5[
-```
-archive << makeNvp("bool", true);
-```
-]
-
-
-.col-5[
-```bash
-"bool" : 1,
-```
-]]
-
----
-.row[
-.col-6[
-```
-struct serialize_scalar
-{
-    template <typename T>
-    static void apply(std::ostream& os, const std::string& n, const T& v)
-    {
-        os << "\"" << n << "\"" << ":"  << v << ",";
-    }
-
-    static void apply(std::ostream& os, const std::string& n,
-                                        const std::string& v)
-    {
-        os << "\"" << n << "\"" << ":"  << "\"" << v << "\"" << ",";
-    }
-
-    static void apply(std::ostream& os, const std::string& n,
-                                        bool v)
-    {
-        os << "\"" << n << "\"" << ":"
-           << std::boolalpha  << v << std::noboolalpha << ",";
-    }
-}
-```
-]
-]
-
-.row[
-.col-5[
-```
-archive << makeNvp("x", 123);
-```
-]
-
-.col-5[
-```bash
-"x" : 123,
-```
-]]
-
-.row[
-.col-5[
-```
-archive << makeNvp("name", "Luke Skywalker");
-```
-]
-
-
-.col-5[
-```bash
-"name" : "Luke Skywalker",
-```
-]]
-
-.row[
-.col-5[
-```
-archive << makeNvp("bool", true);
-```
-]
-
-
-.col-5[
-```bash
-"bool" : true,
-```
-]]
-
----
-.row[
-.col-6[
-```
-struct serialize_scalar
-{
-    template <typename T>
-    static void apply(std::ostream& os, const std::string& n, const T& v)
-    {
-        os << "\"" << n << "\"" << ":"  << v << ",";
-    }
-
-    static void apply(std::ostream& os, const std::string& n,
-                                        const std::string& v)
-    {
-        os << "\"" << n << "\"" << ":"  << "\"" << v << "\"" << ",";
-    }
-
-    static void apply(std::ostream& os, const std::string& n,
-                                        bool v)
-    {
-        os << "\"" << n << "\"" << ":"
-           << std::boolalpha  << v << std::noboolalpha << ",";
-    }
-}
-```
-]
-]
-
----
-.row[
-.col-6[
-```
-struct serialize_scalar
-{
-    template <typename T>
-    static void apply(std::ostream& os, JsonName n, const T& v)
-    {
-        os << n << v << ",";
-    }
-
-    static void apply(std::ostream& os, JsonName n, const std::string& v)
-    {
-        os << n << "\"" << v << "\"" << ",";
-    }
-
-    static void apply(std::ostream& os, JsonName n, bool v)
-    {
-        os << n << std::boolalpha  << v << std::noboolalpha << ",";
-    }
-}
-```
-]
-
-.col-6[
-```
-struct JsonName
-{
-    JsonName() = default;
-    JsonName(const std::string& s) : n(&s){}
-    JsonName(std::nullptr_t) {}
-
-    const std::string* n = nullptr;
-};
-
-std::ostream& operator<<(std::ostream& os, const JsonName& n)
-{
-    if (n.n != nullptr)
-        os << '\"' << *n.n << '\"' << ':';
-    return os;
-}
-```
-]
-]
-
---
-.row[
-.col-5[
-```
-archive << makeNvp("x", 123);
-```
-]
-
-.col-5[
-```bash
-"x" : 123,
-```
-]]
-
-.row[
-.col-5[
-```
-archive << makeNvp("name", "Luke Skywalker");
-```
-]
-
-
-.col-5[
-```bash
-"name" : "Luke Skywalker",
-```
-]]
-
-.row[
-.col-5[
-```
-archive << makeNvp("bool", true);
-```
-]
-
-
-.col-5[
-```bash
-"bool" : true,
-```
-]]
-
----
-
-.row[
-.col-6[
-```
-class Archive
-{
-    std::ostream& mOs;
-
-public:
-    Archive(std::ostream& os) : mOs(os){}
-
-    template <class T>
-    friend Archive& operator<<(Archive& arch, Nvp<T> nvp);
-
-private:
-    template <typename T>
-    void serialize(Nvp<T> nvp)
-    {
-*        details::serialize_impl(mOs, nvp.first, nvp.second);
-    }
-};
-
-template <class T>
-Archive& operator<<(Archive& arch, Nvp<T> nvp)
-{
-    arch.serialize(nvp);
-    return arch;
-
-}
-```
-]
-
-.col-6[
-```
-struct serialize_scalar
-{
-    template <typename T>
-    static void apply(std::ostream& os, JsonName n, const T& v)
-    {
-        os << n << v << ",";
-    }
-
-    static void apply(std::ostream& os, JsonName n, const std::string& v)
-    {
-        os << n << "\"" << v << "\"" << ",";
-    }
-
-    static void apply(std::ostream& os, JsonName n, bool v)
-    {
-        os << n << std::boolalpha  << v << std::noboolalpha << ",";
-    }
-};
-`
-
-template <typename T>
-void serialize_impl(std::ostream& os, const std::string& n, const T& v)
-{
-    return serialize_scalar::apply(os, n, v)
-}
-
-```
-]]
-
----
-.row[
-.col-6[
-```
-std::vector<int> vec = {1,2,3,4};
-archive << makeNvp("vec", vec);
-```
-]
-.col-6[
-```bash
-"vec" : [1,2,3,4]
-```
-]
-]
-
----
-.row[
-.col-6[
-```
-class Archive
-{
-    std::ostream& mOs;
-
-public:
-    Archive(std::ostream& os) : mOs(os){}
-
-    template <class T>
-    friend Archive& operator<<(Archive& arch, Nvp<T> nvp);
-
-private:
-    template <typename T>
-    void serialize(Nvp<T> nvp)
-    {
-*        details::serialize_impl(mOs, nvp.first, nvp.second);
-    }
-};
-
-template <class T>
-Archive& operator<<(Archive& arch, Nvp<T> nvp)
-{
-    arch.serialize(nvp);
-    return arch;
-
-}
-```
-]
-
-.col-6[
-```
-struct serialize_scalar
-{
-    /*...*/
-};
-
-struct serialize_container
-{
-    /*...*/
-};
-
-template <typename T>
-void serialize_impl(std::ostream& os, const std::string& n, const T& v)
-{
-    /* ?? */
-}
-
-```
-]]
-
----
-
-# The basics
-
-## Getting started
-
-Use [Markdown](https://github.com/adam-p/markdown-here/wiki/Markdown-Cheatsheet) to write your slides. Don't be afraid, it's really easy!
-
---
-
-## Making points
-
-Look how you can make *some* points:
---
-
-- Create slides with your **favorite text editor**
---
-
-- Focus on your **content**, not the tool
---
-
-- You can finally be **productive**!
-
----
-
-# There's more
-
-## Syntax highlighting
-
-You can also add `code` to your slides:
-```
-template <class T>  class A
-{
-private:
-    std::vector<int> x;
-    void f(int x)
-    {
-        if (x > 0) x.push_back(x);
-    }
-};
-
-A a;
-a.f(1);
-```
-```xml
-<span class="footnote">
-  <span class="red bold">*</span> Important footnote
-</span>
-```
-
-## CSS classes
-
-You can use .alt[shortcut] syntax to apply .big[some style!]
-
-...or just <span class="alt">HTML</span> if you prefer.
-
----
-
-# And more...
-
-## 12-column grid layout
-
-Use to the included **grid layout** classes to split content easily:
-.col-6[
-  ### Left column
-
-  - I'm on the left
-  - It's neat!
-]
-.col-6[
-  ### Right column
-
-  - I'm on the right
-  - I love it!
-]
-
-## Learn the tricks
-
-See the [wiki](https://github.com/gnab/remark/wiki) to learn more of what you can do with .alt[Remark.js]
+# Thank you.
