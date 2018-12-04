@@ -566,7 +566,7 @@ If the string is deleted the `string_view` dangles.
 std::vector<int> v = {1,2,3,4,5};
 std::span<int> s(v);
 
-std::span<T> sub_s = s.subspan(0,2); // {1,2,3}
+std::span<int> sub_s = s.subspan(0,2); // {1,2,3}
 
 ```
 
@@ -1657,15 +1657,16 @@ layout: true
 ```
 bool my_atoi(const char* str, int& val)
 {
-    if (str == nullptr || !std::isdigit(str[0])) { return false; }
+    if (str == nullptr || !std::isdigit(str[0]) || !str[0] != '-') 
+    { 
+        return false; 
+    }
     val = atoi(str);
     return val;
 }
 ```
 ]
 ]
-
---
 
 ---
 
@@ -1709,7 +1710,6 @@ if (my_atoi(str, x))
 
 ---
 
-
 .row[
 .col-6[
 ```
@@ -1737,7 +1737,7 @@ layout: true
 ```
 int my_atoi(const char* str, bool& ok)
 {
-    if (str == nullptr || !std::isdigit(str[0]))
+    if (str == nullptr || !std::isdigit(str[0]) || !str[0] != '-')
     {
         ok = false;
         return 0;
@@ -1801,7 +1801,7 @@ layout: true
 ```
 std::pair<bool, int> my_atoi(const char* str)
 {
-    if (str == nullptr || !std::isdigit(str[0]))
+    if (str == nullptr || !std::isdigit(str[0]) || !str[0] != '-')
     {
         return {false, 0};
     }
@@ -1975,7 +1975,7 @@ layout: true
 ```
 std::pair<bool, int> my_atoi(const char* str)
 {
-    if (str == nullptr || !std::isdigit(str[0]))
+    if (str == nullptr || !std::isdigit(str[0]) || !str[0] != '-')
     {
         return {false, 0};
     }
@@ -2027,7 +2027,10 @@ layout: false
 ```
 std::optional<int> my_atoi(const char* str)
 {
-    if (str == nullptr || !std::isdigit(str[0])) { return std::nullopt; }
+    if (str == nullptr || !std::isdigit(str[0]) || !str[0] != '-') 
+    { 
+        return std::nullopt; 
+    }
     return atoi(str);
 }
 ```
@@ -4736,7 +4739,7 @@ struct and_
     static bool apply(T&& t, Predicates&&... preds)
     {
         bool b  = true;
-        int _[] = {b = b && preds(std::forward<T>(t))...};
+        int _[] = {0, b = b && preds(std::forward<T>(t))...};
         return b;
     }
 };
@@ -6466,8 +6469,8 @@ template <typename T, typename=void>
 struct is_container : std::false_type{};
 
 template <typename T>
-struct is_container<T, std::void_t<decltype(std::declval<T>().begin(),
-                                   decltype(std::declval<T>().end())),
+struct is_container<T, std::void_t<decltype(std::declval<T>().begin()),
+                                   decltype(std::declval<T>().end()),
                                    typename T::iterator>> : std::true_type{};
 
 ```
@@ -6528,7 +6531,8 @@ void print(const T& v, std::string_view n = {})
         std::cout << n << '=';
     }
 
-*   if constexpr (is_container<T>::value)
+*   if constexpr (is_container<T>::value && 
+                  !std::is_convertible_v<T, std::string>)
     {
         print_container(v);
     }
@@ -6673,9 +6677,9 @@ auto u = std::make_unique<int>(765);
 template <typename T, typename=void>
 struct is_pointer_like : std::false_type{};
 
-template <typename T, typename=void>
+template <typename T>
 struct is_pointer_like<T, std::void_t<decltype(std::declval<T>().operator->()),
-                                       decltype(std::declval<T>().operator*()) >> : std::true_type{};
+                                      decltype(std::declval<T>().operator*()) >> : std::true_type{};
 
 ```
 ---
@@ -6710,7 +6714,8 @@ void print(const T& v, std::string_view n = {})
 {
     /*...*/
 
-    if constexpr (is_container<T>::value)
+    if constexpr (is_container<T>::value &&
+                  !std::is_convertible_v<T, std::string>)
     {
         print_container(v);
     }
@@ -7024,7 +7029,8 @@ void print(const T& v, std::string_view n = {})
 {
     /*...*/
 
-    if constexpr (is_container<T>::value)
+    if constexpr (is_container<T>::value &&
+                  !std::is_convertible_v<T, std::string>)
     {
         print_container(v);
     }
@@ -7436,7 +7442,8 @@ print(std::ostream& os, const T& v, std::string_view n)
         std::cout << '\"' << n << '\"' << ':';
     }
 
-    if constexpr (is_container<T>::value)
+    if constexpr (is_container<T>::value &&
+                  !std::is_convertible_v<T, std::string>)
     {
         print_container(os, v);
     }
