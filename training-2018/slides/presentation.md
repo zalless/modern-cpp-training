@@ -5109,13 +5109,13 @@ void f(T t, typename T::type* p = nullptr) {}
 ---
 ```
 template <typename T>
-void f(T t, typename std::enable_if<true, T>::type* p = nullptr) 
+void f(T t, typename std::enable_if</*condition*/, T>::type* p = nullptr) 
 {
     // do something
 }
 
 template <typename T>
-void f(T t, typename std::enable_if<false, T>::type* p = nullptr) 
+void f(T t, typename std::enable_if</*!condition*/, T>::type* p = nullptr) 
 {
     // do something else
 }
